@@ -4,6 +4,7 @@ pydantic>=2.0.0
 
 # SEC data sourcing
 edgartools>=2.0.0
+hishel==0.1.5  # pin: edgartools uses hishel.FileStorage removed in hishel 1.x
 
 # Document parsing (local, free)
 unstructured>=0.14.0

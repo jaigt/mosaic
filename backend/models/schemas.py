@@ -31,6 +31,9 @@ class RetrievedChunk(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversation_history: list[dict] = Field(default_factory=list)
+    ticker: Optional[str] = None
+    year: Optional[int] = None
+    document_type: Optional[str] = None
 
 
 class IngestRequest(BaseModel):

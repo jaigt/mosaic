@@ -1,123 +1,245 @@
-import React, { useState } from 'react';
-import { Send, Upload, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Send, Upload, Sparkles, Trash2, X, FileText } from 'lucide-react';
 import Message from './Message';
-import AgentState from './AgentState';
+import AgentState, { AgentStep } from './AgentState';
+import { streamChat, Source, FilingInfo } from '../api';
 
-const ChatPanel: React.FC = () => {
-  const [messages] = useState([
-    {
-      role: 'user' as const,
-      content: 'Compare Microsoft\'s revenue growth over the last 3 years and summarize their R&D focus.'
-    },
-    {
-      role: 'assistant' as const,
-      content: 'Based on the 2022-2024 10-K filings, Microsoft has shown consistent double-digit revenue growth, primarily driven by Azure and the Cloud segments. Their R&D has increasingly shifted towards integrating Generative AI across the Office 365 and GitHub suites.',
-      chartData: [
-        { name: '2022', value: 198.3 },
-        { name: '2023', value: 211.9 },
-        { name: '2024', value: 245.1 }
-      ],
-      citations: [
-        { id: 'msft-10k-2024', label: 'MSFT 2024 10-K, Item 7' },
-        { id: 'msft-10k-2023', label: 'MSFT 2023 10-K, Item 1' }
-      ]
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Source[];
+  isStreaming?: boolean;
+}
+
+interface ChatPanelProps {
+  onSourcesUpdate: (sources: Source[]) => void;
+  onIngestClick: () => void;
+  onClear: () => void;
+  activeFiling: FilingInfo | null;
+  onClearFiling: () => void;
+}
+
+const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, onClear, activeFiling, onClearFiling }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || isStreaming) return;
+
+    const history = messages.map(m => ({ role: m.role, content: m.content }));
+
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: text },
+      { role: 'assistant', content: '', isStreaming: true },
+    ]);
+    setInput('');
+    setIsStreaming(true);
+    setAgentSteps([]);
+
+    let accumulated = '';
+
+    try {
+      const filters = activeFiling ? {
+        ticker: activeFiling.ticker,
+        year: activeFiling.filing_year,
+        document_type: activeFiling.document_type
+      } : undefined;
+
+      for await (const event of streamChat(text, history, filters)) {
+        if (event.type === 'status') {
+          setAgentSteps(prev => [
+            ...prev.map(s => s.status === 'running' ? { ...s, status: 'completed' as const } : s),
+            { id: String(Date.now()), label: event.data, status: 'running' as const },
+          ]);
+        } else if (event.type === 'chunk') {
+          accumulated += event.data;
+          const snap = accumulated;
+          setMessages(prev => prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, content: snap } : m
+          ));
+        } else if (event.type === 'sources') {
+          onSourcesUpdate(event.data);
+          const sourceSnap = event.data;
+          setMessages(prev => prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, sources: sourceSnap } : m
+          ));
+        } else if (event.type === 'done') {
+          setAgentSteps(prev => prev.map(s => ({ ...s, status: 'completed' as const })));
+          setMessages(prev => prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, isStreaming: false } : m
+          ));
+        } else if (event.type === 'error') {
+          setMessages(prev => prev.map((m, i) =>
+            i === prev.length - 1 ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m
+          ));
+        }
+      }
+    } catch (err) {
+      setMessages(prev => prev.map((m, i) =>
+        i === prev.length - 1
+          ? { ...m, content: `Connection error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
+          : m
+      ));
+    } finally {
+      setIsStreaming(false);
     }
-  ]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
   return (
     <div style={{
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
+      flex: 1, display: 'flex', flexDirection: 'column',
       backgroundColor: 'var(--bg-primary)',
-      border: '1px solid var(--border-color)',
-      borderRadius: '12px',
-      overflow: 'hidden'
+      border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden'
     }}>
       <header style={{
-        padding: '16px 20px',
-        borderBottom: '1px solid var(--border-color)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between'
+        padding: '12px 20px', borderBottom: '1px solid var(--border-color)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        minHeight: '60px', minWidth: 0, gap: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, overflow: 'hidden' }}>
           <Sparkles size={18} style={{ color: 'var(--accent-color)' }} />
-          <h2 style={{ fontSize: '15px', fontWeight: 'bold' }}>AI Analyst Chat</h2>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 'bold', lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>AI Analyst Chat</h2>
+            {activeFiling ? (
+              <div style={{ 
+                display: 'flex', alignItems: 'center', gap: '4px', 
+                backgroundColor: 'rgba(0, 123, 255, 0.1)', border: '1px solid rgba(0, 123, 255, 0.2)',
+                padding: '2px 8px', borderRadius: '4px', marginTop: '2px'
+              }}>
+                <FileText size={10} style={{ color: 'var(--accent-color)' }} />
+                <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--accent-color)' }}>
+                  {activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}
+                </span>
+                <X 
+                  size={10} 
+                  style={{ cursor: 'pointer', color: 'var(--accent-color)', marginLeft: '2px' }} 
+                  onClick={onClearFiling}
+                />
+              </div>
+            ) : (
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Global Search Mode</div>
+            )}
+          </div>
         </div>
-        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Model: Claude 3.7 Sonnet</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={onIngestClick}
+            style={{
+              padding: '6px 14px', borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'transparent', color: 'var(--text-secondary)',
+              cursor: 'pointer', fontSize: '12px', fontWeight: '500'
+            }}
+          >
+            + Ingest Filing
+          </button>
+          {messages.length > 0 && !isStreaming && (
+            <button
+              onClick={() => { setMessages([]); setAgentSteps([]); onClear(); }}
+              title="Clear conversation"
+              style={{
+                padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                fontSize: '12px'
+              }}
+            >
+              <Trash2 size={13} />
+              Clear
+            </button>
+          )}
+        </div>
       </header>
 
       <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px'
+        flex: 1, overflowY: 'auto', padding: '20px',
+        display: 'flex', flexDirection: 'column', gap: '20px'
       }}>
+        {messages.length === 0 && (
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-secondary)', textAlign: 'center', gap: '12px', padding: '40px'
+          }}>
+            <Sparkles size={32} style={{ opacity: 0.4 }} />
+            <div style={{ fontSize: '16px', fontWeight: '500' }}>
+              {activeFiling 
+                ? `Ask about ${activeFiling.ticker}'s ${activeFiling.filing_year} ${activeFiling.document_type}`
+                : 'Ask about SEC filings'}
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.7 }}>
+              {activeFiling 
+                ? 'Your queries are currently focused on this specific document.'
+                : 'First ingest a filing or select one from the sidebar, then ask questions.'}
+            </div>
+          </div>
+        )}
         {messages.map((msg, idx) => (
-          <Message key={idx} {...msg} />
+          <Message key={idx} role={msg.role} content={msg.content} sources={msg.sources} isStreaming={msg.isStreaming} />
         ))}
-        <AgentState />
+        {isStreaming && <AgentState steps={agentSteps} isActive={true} />}
+        <div ref={messagesEndRef} />
       </div>
 
       <div style={{
-        padding: '20px',
-        borderTop: '1px solid var(--border-color)',
+        padding: '20px', borderTop: '1px solid var(--border-color)',
         backgroundColor: 'var(--bg-sidebar)'
       }}>
-        <div style={{
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center'
-        }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <textarea
-            placeholder="Ask about financials, risk factors, or company performance..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={activeFiling ? `Search in ${activeFiling.ticker} ${activeFiling.filing_year}...` : "Ask about financials, risk factors... (Enter to send)"}
+            disabled={isStreaming}
             style={{
-              width: '100%',
-              minHeight: '80px',
-              maxHeight: '200px',
+              width: '100%', minHeight: '80px', maxHeight: '200px',
               backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '12px',
-              padding: '12px 16px',
-              paddingRight: '120px',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-              resize: 'none',
-              outline: 'none',
-              fontFamily: 'inherit'
+              border: '1px solid var(--border-color)', borderRadius: '12px',
+              padding: '12px 16px', paddingRight: '120px',
+              color: 'var(--text-primary)', fontSize: '14px',
+              resize: 'none', outline: 'none', fontFamily: 'inherit',
+              opacity: isStreaming ? 0.6 : 1
             }}
           />
-          <div style={{
-            position: 'absolute',
-            right: '12px',
-            bottom: '12px',
-            display: 'flex',
-            gap: '8px'
-          }}>
-            <button style={{
-              padding: '8px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer'
-            }}>
+          <div style={{ position: 'absolute', right: '12px', bottom: '12px', display: 'flex', gap: '8px' }}>
+            <button
+              onClick={onIngestClick}
+              style={{
+                padding: '8px', borderRadius: '8px', border: 'none',
+                backgroundColor: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer'
+              }}
+              title="Ingest a filing"
+            >
               <Upload size={18} />
             </button>
-            <button style={{
-              padding: '8px 16px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: 'var(--accent-color)',
-              color: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+              style={{
+                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                backgroundColor: 'var(--accent-color)', color: 'white',
+                cursor: !input.trim() || isStreaming ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                opacity: !input.trim() || isStreaming ? 0.5 : 1
+              }}
+            >
               <Send size={16} />
               <span style={{ fontSize: '14px', fontWeight: '500' }}>Send</span>
             </button>

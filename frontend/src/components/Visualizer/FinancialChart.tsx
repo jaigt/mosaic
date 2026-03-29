@@ -5,9 +5,8 @@ import {
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  Legend 
+  Tooltip,
+  ResponsiveContainer
 } from 'recharts';
 
 interface ChartData {

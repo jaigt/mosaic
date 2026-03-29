@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Dimensions by model
 _DIMS = {
-    "text-embedding-004": 768,
+    "gemini-embedding-001": 3072,
+    "gemini-embedding-2-preview": 3072,
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
 }

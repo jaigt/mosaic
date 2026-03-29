@@ -9,9 +9,10 @@ Endpoints:
 import asyncio
 import json
 import logging
+import threading
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -19,6 +20,7 @@ from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
 from backend.pipeline.ingest import ingest_filing
 from backend.pipeline.llm import stream_generate
+from backend.pipeline.store import get_table
 from backend.retrieval.retriever import retrieve
 
 logger = logging.getLogger(__name__)
@@ -39,9 +41,24 @@ You are given retrieved excerpts from real SEC filings to answer the user's ques
 
 Rules:
 - Base your answer strictly on the provided SOURCE DOCUMENTS.
-- Always cite which filing (ticker, year, section) each claim comes from.
+- Always cite which filing (ticker, year, section) each claim comes from using [1], [2], etc.
 - If the sources do not contain enough information to answer fully, say so explicitly.
 - Be concise and precise. Avoid filler text.
+
+Generative UI (Financial Charts):
+- If the user asks for a comparison of numbers (e.g., revenue over years, net income across tickers) and you have the data, you MUST include a chart in your response.
+- Use the following format for charts:
+<chart>
+{
+  "title": "Comparison of Revenue (Billions)",
+  "data": [
+    {"name": "2022", "value": 117.1},
+    {"name": "2023", "value": 125.4},
+    {"name": "2024", "value": 130.2}
+  ]
+}
+</chart>
+- Always continue with your textual analysis AFTER the chart tag if needed.
 """
 
 
@@ -54,22 +71,44 @@ def health():
     }}
 
 
+# Simple in-memory status tracker for ingestion tasks
+# In a production app, use Redis/Celery.
+_ingest_tasks = {}
+
 @app.post("/ingest")
-async def ingest(request: IngestRequest):
-    """Trigger ingestion of an SEC filing. Runs synchronously (can take minutes)."""
+async def ingest(request: IngestRequest, background_tasks: BackgroundTasks):
+    """Trigger ingestion of an SEC filing. Returns immediately; status tracked via /ingest/status."""
+    task_id = f"{request.ticker}-{request.document_type}-{request.year or 'latest'}"
+    
+    if _ingest_tasks.get(task_id) == "running":
+        return {"status": "already_running", "task_id": task_id}
+
+    _ingest_tasks[task_id] = "running"
+    background_tasks.add_task(_run_ingest, task_id, request)
+    
+    return {"status": "started", "task_id": task_id}
+
+
+@app.get("/ingest/status/{task_id}")
+async def get_ingest_status(task_id: str):
+    status = _ingest_tasks.get(task_id, "not_found")
+    return {"task_id": task_id, "status": status}
+
+
+async def _run_ingest(task_id: str, request: IngestRequest):
     try:
+        logger.info(f"Starting background ingestion for {task_id}")
         count = await asyncio.to_thread(
             ingest_filing,
             ticker=request.ticker,
             document_type=request.document_type,
             year=request.year,
         )
-        return {"status": "ok", "chunks_stored": count, "ticker": request.ticker}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        _ingest_tasks[task_id] = f"completed:{count}"
+        logger.info(f"Background ingestion completed for {task_id}: {count} chunks")
     except Exception as e:
-        logger.exception(f"Ingestion failed for {request.ticker}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Background ingestion failed for {task_id}")
+        _ingest_tasks[task_id] = f"failed:{str(e)}"
 
 
 @app.post("/retrieve")
@@ -84,6 +123,24 @@ async def retrieve_chunks(request: QueryRequest):
         document_type=request.document_type,
     )
     return {"chunks": [c.model_dump() for c in chunks]}
+
+
+@app.get("/filings")
+async def list_filings():
+    """List all ingested filings (distinct ticker/doc_type/year) with chunk counts."""
+    try:
+        table = await asyncio.to_thread(get_table)
+        df = await asyncio.to_thread(lambda: table.to_pandas()[["ticker", "document_type", "filing_year"]].drop_duplicates())
+        counts = await asyncio.to_thread(
+            lambda: table.to_pandas()
+            .groupby(["ticker", "document_type", "filing_year"])
+            .size()
+            .reset_index(name="chunks")
+            .to_dict(orient="records")
+        )
+        return {"filings": counts}
+    except Exception:
+        return {"filings": []}
 
 
 @app.post("/chat")
@@ -107,7 +164,14 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
     try:
         # Step 1: Retrieval
         yield sse("status", "Extracting filters from query...")
-        chunks = await asyncio.to_thread(retrieve, query=request.message, top_k=5)
+        chunks = await asyncio.to_thread(
+            retrieve, 
+            query=request.message, 
+            top_k=5,
+            ticker=request.ticker,
+            year=request.year,
+            document_type=request.document_type
+        )
 
         if not chunks:
             yield sse("chunk", "I couldn't find relevant SEC filing data for your query. Try ingesting a filing first.")
@@ -124,9 +188,27 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
             f"USER QUESTION: {request.message}"
         )
 
-        # Step 3: Stream synthesis response (Claude or Gemini per SYNTHESIS_MODEL config)
-        for text in await asyncio.to_thread(lambda: list(stream_generate(full_prompt, model=settings.synthesis_model))):
-            yield sse("chunk", text)
+        # Step 3: Stream synthesis response token-by-token
+        # stream_generate is a sync generator; bridge it to async via a queue
+        # so tokens are forwarded as they arrive rather than buffered.
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
+
+        def _produce():
+            try:
+                for text in stream_generate(full_prompt, model=settings.synthesis_model):
+                    loop.call_soon_threadsafe(queue.put_nowait, text)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, _DONE)
+
+        threading.Thread(target=_produce, daemon=True).start()
+
+        while True:
+            item = await queue.get()
+            if item is _DONE:
+                break
+            yield sse("chunk", item)
 
         # Step 4: Send source metadata for frontend citation panel
         sources_payload = [
@@ -136,6 +218,7 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
                 "quarter": c.chunk.filing_quarter,
                 "section": c.chunk.sec_item_section,
                 "chunk_type": c.chunk.chunk_type,
+                "text_content": c.chunk.text_content,
                 "raw_payload": c.chunk.raw_payload,
                 "score": c.score,
             }

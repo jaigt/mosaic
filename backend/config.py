@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""     # Optional — needed for gpt-* / o* models
     sec_user_agent: str
     lancedb_path: str = "./data/lancedb"
-    fast_model: str = "gemini-2.0-flash"
-    synthesis_model: str = "gemini-2.5-pro-preview-03-25"
-    embedding_model: str = "text-embedding-004"
+    fast_model: str = "gemini-3.1-flash-lite-preview"
+    synthesis_model: str = "gemini-2.5-flash"
+    embedding_model: str = "gemini-embedding-001"
 
     class Config:
         env_file = Path(__file__).parent.parent / ".env"
