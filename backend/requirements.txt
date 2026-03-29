@@ -1,0 +1,25 @@
+# Core RAG pipeline
+lancedb>=0.6.0
+pydantic>=2.0.0
+
+# SEC data sourcing
+edgartools>=2.0.0
+
+# Document parsing (local, free)
+unstructured>=0.14.0
+
+# Google AI (embedding + LLM)
+google-genai>=1.0.0
+anthropic>=0.40.0
+openai>=1.50.0
+
+# API layer
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic-settings>=2.0.0
+httpx>=0.27.0
+tenacity>=8.2.0  # retry logic for API calls
