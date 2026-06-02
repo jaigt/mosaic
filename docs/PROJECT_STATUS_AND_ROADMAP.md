@@ -4,7 +4,11 @@
 > has been done, what remains, and how to continue. Written as a handoff so a
 > future session (human or agent) can pick up cold. Keep this updated.
 >
-> **Last updated:** 2026-05-31 (by Claude, after a full audit + P0/P1 remediation pass)
+> **Last updated:** 2026-06-02 (round 2: RAG quality + ops + design system, all committed)
+>
+> 👉 **For the live, prioritized to-do list, see [`docs/TODO.md`](./TODO.md).** This
+> doc is the background/architecture/what's-done handoff; TODO.md is the actionable
+> checklist. Sections §5/§6 below are kept for narrative context but TODO.md wins on conflict.
 
 ---
 
