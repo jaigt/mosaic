@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { FileText, Download, Maximize2, Search, Info } from 'lucide-react';
 import { Source } from '../api';
 
@@ -6,8 +7,21 @@ interface SourcePanelProps {
   sources: Source[];
 }
 
+// Allowlist for SEC table HTML: structural table tags only, no scripts/styles/
+// event handlers. Backstops the backend cleanup against stored XSS.
+const TABLE_SANITIZE = {
+  ALLOWED_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col', 'span', 'br'],
+  ALLOWED_ATTR: ['colspan', 'rowspan', 'scope'],
+  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'svg', 'img', 'link'],
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'style'],
+};
+
 const SourcePanel: React.FC<SourcePanelProps> = ({ sources }) => {
   const [activeIdx, setActiveIdx] = useState(0);
+
+  // Reset the active tab whenever a new result set arrives, so a previously
+  // selected (now out-of-range) index can't blank the panel.
+  useEffect(() => { setActiveIdx(0); }, [sources]);
 
   const hasRealSources = sources.length > 0;
   const activeSource = hasRealSources ? sources[activeIdx] : null;
@@ -109,7 +123,7 @@ const SourceChunkView: React.FC<SourceChunkViewProps> = ({ source, index, total 
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px', color: '#8b949e' }}>
           <Info size={14} />
-          Relevance Score: {(1 - source.score).toFixed(4)}
+          Relevance Score: {(1 / (1 + source.score)).toFixed(4)}
         </div>
       </div>
       <div style={{ fontSize: '12px', color: '#8b949e', fontWeight: '500' }}>
@@ -132,45 +146,11 @@ const SourceChunkView: React.FC<SourceChunkViewProps> = ({ source, index, total 
             {source.text_content}
           </div>
         )}
-        {/* Rendered HTML table */}
+        {/* Rendered HTML table — sanitized; styling lives in index.css */}
         <div
-          style={{ overflowX: 'auto', fontSize: '13px', backgroundColor: '#161b22', borderRadius: '8px', padding: '1px' }}
-          dangerouslySetInnerHTML={{ __html: `<style>
-            .sec-table-container { padding: 16px; background: #161b22; border-radius: 8px; border: 1px solid #30363d; overflow-x: auto; }
-            .sec-table-container table { border-collapse: collapse; width: 100%; font-family: var(--font-family); color: #c9d1d9; table-layout: auto; }
-            .sec-table-container td, .sec-table-container th {
-              padding: 8px 12px; border-bottom: 1px solid #30363d;
-              vertical-align: bottom;
-            }
-            /* First column: label column */
-            .sec-table-container tr td:first-child, .sec-table-container tr th:first-child {
-              text-align: left; white-space: normal; min-width: 160px;
-              color: #f0f6fc; font-weight: 500;
-            }
-            /* Data columns: right-align numbers */
-            .sec-table-container tbody td { text-align: right; white-space: nowrap; }
-            /* Header rows */
-            .sec-table-container thead td, .sec-table-container thead th {
-              text-align: center; font-weight: 600; color: #8b949e;
-              border-bottom: 2px solid #30363d; background: rgba(255,255,255,0.02);
-              white-space: nowrap;
-            }
-            /* Override first-child to stay left-aligned */
-            .sec-table-container thead td:first-child, .sec-table-container thead th:first-child,
-            .sec-table-container tbody td:first-child {
-              text-align: left;
-            }
-            /* Collapse empty spacer cells — SEC filings use these between $ and value columns */
-            .sec-table-container td:empty, .sec-table-container th:empty {
-              width: 4px !important;
-              min-width: 0 !important;
-              max-width: 8px !important;
-              padding: 4px 0 !important;
-            }
-            .sec-table-container td:empty::before, .sec-table-container th:empty::before { content: ""; }
-
-            .sec-table-container tbody tr:hover td { background: rgba(56, 139, 253, 0.05); }
-          </style><div class="sec-table-container">${source.raw_payload}</div>` }}
+          className="sec-table-container"
+          style={{ overflowX: 'auto', fontSize: '13px' }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(source.raw_payload, TABLE_SANITIZE) }}
         />
       </div>
     ) : (

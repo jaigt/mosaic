@@ -28,18 +28,20 @@ export type SseEvent =
 export async function* streamChat(
   message: string,
   history: { role: string; content: string }[],
-  filters?: { ticker?: string; year?: number; document_type?: string }
+  filters?: { ticker?: string; year?: number; document_type?: string },
+  signal?: AbortSignal
 ): AsyncGenerator<SseEvent> {
   const resp = await fetch(`${BASE}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      message, 
+    body: JSON.stringify({
+      message,
       conversation_history: history,
       ticker: filters?.ticker,
       year: filters?.year,
       document_type: filters?.document_type
     }),
+    signal,
   });
   if (!resp.ok) throw new Error(`Chat request failed: ${resp.status}`);
   const reader = resp.body!.getReader();

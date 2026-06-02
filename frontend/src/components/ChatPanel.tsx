@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Upload, Sparkles, Trash2, X, FileText } from 'lucide-react';
+import { Send, Upload, Sparkles, Trash2, X, FileText, Square } from 'lucide-react';
 import Message from './Message';
 import AgentState, { AgentStep } from './AgentState';
 import { streamChat, Source, FilingInfo } from '../api';
 
 interface ChatMessage {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
@@ -25,10 +26,57 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  // Tracks whether the latest scroll request was triggered by a brand-new
+  // message (smooth) vs. a streaming token (auto / jump).
+  const smoothScrollRef = useRef(true);
 
+  const requestScroll = (smooth: boolean) => {
+    if (smooth) smoothScrollRef.current = true;
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const container = scrollContainerRef.current;
+      // Only auto-scroll when already near the bottom, so we don't yank the
+      // viewport away from a user who has scrolled up to read.
+      if (container) {
+        const nearBottom =
+          container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+        if (!nearBottom && !smoothScrollRef.current) return;
+      }
+      messagesEndRef.current?.scrollIntoView({
+        behavior: smoothScrollRef.current ? 'smooth' : 'auto',
+      });
+      smoothScrollRef.current = false;
+    });
+  };
+
+  // Smooth-scroll only when the number of messages changes (a new bubble was
+  // added). Per-token scrolling is handled imperatively in handleSend.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    requestScroll(true);
+  }, [messages.length]);
+
+  // Abort any in-flight stream on unmount.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
+  const handleStop = () => {
+    abortRef.current?.abort();
+  };
+
+  const handleClear = () => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setAgentSteps([]);
+    onClear();
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -36,14 +84,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
 
     const history = messages.map(m => ({ role: m.role, content: m.content }));
 
+    const assistantId = crypto.randomUUID();
     setMessages(prev => [
       ...prev,
-      { role: 'user', content: text },
-      { role: 'assistant', content: '', isStreaming: true },
+      { id: crypto.randomUUID(), role: 'user', content: text },
+      { id: assistantId, role: 'assistant', content: '', isStreaming: true },
     ]);
     setInput('');
     setIsStreaming(true);
     setAgentSteps([]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     let accumulated = '';
 
@@ -54,7 +106,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
         document_type: activeFiling.document_type
       } : undefined;
 
-      for await (const event of streamChat(text, history, filters)) {
+      for await (const event of streamChat(text, history, filters, controller.signal)) {
         if (event.type === 'status') {
           setAgentSteps(prev => [
             ...prev.map(s => s.status === 'running' ? { ...s, status: 'completed' as const } : s),
@@ -63,33 +115,45 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
         } else if (event.type === 'chunk') {
           accumulated += event.data;
           const snap = accumulated;
-          setMessages(prev => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: snap } : m
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, content: snap } : m
           ));
+          requestScroll(false);
         } else if (event.type === 'sources') {
           onSourcesUpdate(event.data);
           const sourceSnap = event.data;
-          setMessages(prev => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, sources: sourceSnap } : m
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, sources: sourceSnap } : m
           ));
         } else if (event.type === 'done') {
           setAgentSteps(prev => prev.map(s => ({ ...s, status: 'completed' as const })));
-          setMessages(prev => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, isStreaming: false } : m
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, isStreaming: false } : m
           ));
         } else if (event.type === 'error') {
-          setMessages(prev => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m
           ));
         }
       }
     } catch (err) {
-      setMessages(prev => prev.map((m, i) =>
-        i === prev.length - 1
-          ? { ...m, content: `Connection error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
-          : m
-      ));
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Stream was intentionally stopped by the user — finalize gracefully.
+        setAgentSteps(prev => prev.map(s =>
+          s.status === 'running' ? { ...s, status: 'completed' as const } : s
+        ));
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId ? { ...m, isStreaming: false } : m
+        ));
+      } else {
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId
+            ? { ...m, content: `Connection error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
+            : m
+        ));
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setIsStreaming(false);
     }
   };
@@ -149,9 +213,24 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
           >
             + Ingest Filing
           </button>
+          {isStreaming && (
+            <button
+              onClick={handleStop}
+              title="Stop generating"
+              style={{
+                padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                fontSize: '12px'
+              }}
+            >
+              <Square size={13} />
+              Stop
+            </button>
+          )}
           {messages.length > 0 && !isStreaming && (
             <button
-              onClick={() => { setMessages([]); setAgentSteps([]); onClear(); }}
+              onClick={handleClear}
               title="Clear conversation"
               style={{
                 padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
@@ -167,7 +246,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
         </div>
       </header>
 
-      <div style={{
+      <div ref={scrollContainerRef} style={{
         flex: 1, overflowY: 'auto', padding: '20px',
         display: 'flex', flexDirection: 'column', gap: '20px'
       }}>
@@ -190,8 +269,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
             </div>
           </div>
         )}
-        {messages.map((msg, idx) => (
-          <Message key={idx} role={msg.role} content={msg.content} sources={msg.sources} isStreaming={msg.isStreaming} />
+        {messages.map((msg) => (
+          <Message key={msg.id} role={msg.role} content={msg.content} sources={msg.sources} isStreaming={msg.isStreaming} />
         ))}
         {isStreaming && <AgentState steps={agentSteps} isActive={true} />}
         <div ref={messagesEndRef} />

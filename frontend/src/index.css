@@ -57,3 +57,75 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* SEC filing table rendering (SourcePanel). Injected HTML is sanitized in JS;
+   these rules style the structural table tags. */
+.sec-table-container {
+  padding: 16px;
+  background: #161b22;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  overflow-x: auto;
+}
+.sec-table-container table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-family);
+  color: #c9d1d9;
+  table-layout: auto;
+}
+.sec-table-container td,
+.sec-table-container th {
+  padding: 8px 12px;
+  border-bottom: 1px solid #30363d;
+  vertical-align: bottom;
+}
+/* First column: label column */
+.sec-table-container tr td:first-child,
+.sec-table-container tr th:first-child {
+  text-align: left;
+  white-space: normal;
+  min-width: 160px;
+  color: #f0f6fc;
+  font-weight: 500;
+}
+/* Data columns: right-align numbers */
+.sec-table-container tbody td {
+  text-align: right;
+  white-space: nowrap;
+}
+/* Header rows */
+.sec-table-container thead td,
+.sec-table-container thead th {
+  text-align: center;
+  font-weight: 600;
+  color: #8b949e;
+  border-bottom: 2px solid #30363d;
+  background: rgba(255, 255, 255, 0.02);
+  white-space: nowrap;
+}
+/* Override first-child to stay left-aligned */
+.sec-table-container thead td:first-child,
+.sec-table-container thead th:first-child,
+.sec-table-container tbody td:first-child {
+  text-align: left;
+}
+/* Collapse empty spacer cells — SEC filings use these between $ and value columns */
+.sec-table-container td:empty,
+.sec-table-container th:empty {
+  width: 4px !important;
+  min-width: 0 !important;
+  max-width: 8px !important;
+  padding: 4px 0 !important;
+}
+.sec-table-container td:empty::before,
+.sec-table-container th:empty::before {
+  content: "";
+}
+.sec-table-container tbody tr:hover td {
+  background: rgba(56, 139, 253, 0.05);
+}

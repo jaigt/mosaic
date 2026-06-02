@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LayoutDashboard, History, Settings, LogOut, Database, FileText, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
+import { LayoutDashboard, History, Settings, LogOut, Database, FileText, RefreshCw, Loader2 } from 'lucide-react';
 import { listFilings, FilingInfo, ingestFiling, getIngestStatus } from '../api';
 
 interface SidebarProps {
@@ -126,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onIngestClick, activeFiling, onSelect
             No filings ingested yet.
           </div>
         ) : (
-          filings.map((f, i) => {
+          filings.map((f) => {
             const taskId = `${f.ticker}-${f.document_type}-${f.filing_year}`;
             const isActive = activeFiling?.ticker === f.ticker &&
                              activeFiling?.filing_year === f.filing_year &&

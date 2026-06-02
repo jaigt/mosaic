@@ -120,7 +120,7 @@ const IngestModal: React.FC<IngestModalProps> = ({ onClose }) => {
               placeholder="e.g. 2024"
               disabled={status === 'loading'}
               min="2000"
-              max="2025"
+              max={new Date().getFullYear()}
               style={{
                 width: '100%', padding: '10px 12px', boxSizing: 'border-box',
                 backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)',

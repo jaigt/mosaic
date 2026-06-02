@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { User, Bot, ExternalLink } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import FinancialChart from './Visualizer/FinancialChart';
 import { Source } from '../api';
@@ -19,26 +19,77 @@ interface MessageProps {
   isStreaming?: boolean;
 }
 
-const Message: React.FC<MessageProps> = ({ role, content, chartData, citations, sources, isStreaming }) => {
+// Hoisted to module scope: this object captures nothing dynamic, so re-creating
+// it on every render needlessly forces react-markdown to re-render its subtree.
+const markdownComponents: Components = {
+  a: ({ node, ...props }) => (
+    <a {...props} style={{ color: 'var(--accent-color)', textDecoration: 'none' }} target="_blank" rel="noreferrer" />
+  ),
+  p: ({ node, ...props }) => <p {...props} style={{ marginBottom: '12px' }} />,
+  ul: ({ node, ...props }) => <ul {...props} style={{ marginBottom: '12px', paddingLeft: '20px' }} />,
+  li: ({ node, ...props }) => <li {...props} style={{ marginBottom: '4px' }} />,
+  code: ({ node, ...props }) => (
+    <code {...props} style={{
+      backgroundColor: 'rgba(255,255,255,0.05)',
+      padding: '2px 4px',
+      borderRadius: '4px',
+      fontFamily: 'var(--font-mono)',
+      fontSize: '0.9em'
+    }} />
+  ),
+  table: ({ node, ...props }) => (
+    <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+      <table {...props} style={{
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: '13px',
+        border: '1px solid var(--border-color)'
+      }} />
+    </div>
+  ),
+  th: ({ node, ...props }) => (
+    <th {...props} style={{
+      padding: '8px',
+      backgroundColor: 'rgba(255,255,255,0.02)',
+      border: '1px solid var(--border-color)',
+      textAlign: 'left'
+    }} />
+  ),
+  td: ({ node, ...props }) => (
+    <td {...props} style={{
+      padding: '8px',
+      border: '1px solid var(--border-color)'
+    }} />
+  )
+};
+
+const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming }) => {
   const isUser = role === 'user';
 
-  // Extract chart data from content if it contains <chart> tags
-  // This is a simple parser for the "Generative UI" feature
-  let cleanContent = content;
-  let inlineChartData = chartData;
+  // Extract chart data from content if it contains <chart> tags.
+  // Memoized on `content` so the (potentially expensive) regex + JSON.parse
+  // only runs when the text actually changes.
+  const { cleanContent, inlineChartData, inlineChartTitle } = useMemo(() => {
+    let cleanContent = content;
+    let inlineChartData = chartData;
+    let inlineChartTitle = 'Analysis';
 
-  if (!isUser && content.includes('<chart>')) {
-    try {
-      const chartMatch = content.match(/<chart>([\s\S]*?)<\/chart>/);
-      if (chartMatch) {
-        const parsed = JSON.parse(chartMatch[1]);
-        inlineChartData = parsed.data;
-        cleanContent = content.replace(/<chart>[\s\S]*?<\/chart>/, '').trim();
+    if (!isUser && content.includes('<chart>')) {
+      try {
+        const chartMatch = content.match(/<chart>([\s\S]*?)<\/chart>/);
+        if (chartMatch) {
+          const parsed = JSON.parse(chartMatch[1]);
+          inlineChartData = parsed.data;
+          if (parsed.title) inlineChartTitle = parsed.title;
+          cleanContent = content.replace(/<chart>[\s\S]*?<\/chart>/, '').trim();
+        }
+      } catch (e) {
+        console.error('Failed to parse inline chart data', e);
       }
-    } catch (e) {
-      console.error('Failed to parse inline chart data', e);
     }
-  }
+
+    return { cleanContent, inlineChartData, inlineChartTitle };
+  }, [content, chartData, isUser]);
 
   return (
     <div style={{ 
@@ -73,49 +124,9 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, citations, 
         }}>
           {cleanContent ? (
             <div className="markdown-content">
-              <ReactMarkdown 
+              <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={{
-                  a: ({ node, ...props }) => (
-                    <a {...props} style={{ color: 'var(--accent-color)', textDecoration: 'none' }} target="_blank" rel="noreferrer" />
-                  ),
-                  p: ({ node, ...props }) => <p {...props} style={{ marginBottom: '12px' }} />,
-                  ul: ({ node, ...props }) => <ul {...props} style={{ marginBottom: '12px', paddingLeft: '20px' }} />,
-                  li: ({ node, ...props }) => <li {...props} style={{ marginBottom: '4px' }} />,
-                  code: ({ node, ...props }) => (
-                    <code {...props} style={{ 
-                      backgroundColor: 'rgba(255,255,255,0.05)', 
-                      padding: '2px 4px', 
-                      borderRadius: '4px',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.9em'
-                    }} />
-                  ),
-                  table: ({ node, ...props }) => (
-                    <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
-                      <table {...props} style={{ 
-                        width: '100%', 
-                        borderCollapse: 'collapse', 
-                        fontSize: '13px',
-                        border: '1px solid var(--border-color)' 
-                      }} />
-                    </div>
-                  ),
-                  th: ({ node, ...props }) => (
-                    <th {...props} style={{ 
-                      padding: '8px', 
-                      backgroundColor: 'rgba(255,255,255,0.02)', 
-                      border: '1px solid var(--border-color)',
-                      textAlign: 'left'
-                    }} />
-                  ),
-                  td: ({ node, ...props }) => (
-                    <td {...props} style={{ 
-                      padding: '8px', 
-                      border: '1px solid var(--border-color)' 
-                    }} />
-                  )
-                }}
+                components={markdownComponents}
               >
                 {cleanContent}
               </ReactMarkdown>
@@ -134,7 +145,7 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, citations, 
 
         {inlineChartData && inlineChartData.length > 0 && (
           <div style={{ marginTop: '16px' }}>
-            <FinancialChart title="Revenue & Performance Analysis" data={inlineChartData} />
+            <FinancialChart title={inlineChartTitle} data={inlineChartData} />
           </div>
         )}
 
@@ -157,4 +168,4 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, citations, 
   );
 };
 
-export default Message;
+export default React.memo(Message);

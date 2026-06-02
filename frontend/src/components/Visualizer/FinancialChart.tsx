@@ -20,7 +20,7 @@ interface FinancialChartProps {
   color?: string;
 }
 
-const FinancialChart: React.FC<FinancialChartProps> = ({ title, data, color = '#007bff' }) => {
+const FinancialChart: React.FC<FinancialChartProps> = React.memo(({ title, data, color = '#007bff' }) => {
   return (
     <div style={{
       width: '100%',
@@ -58,6 +58,8 @@ const FinancialChart: React.FC<FinancialChartProps> = ({ title, data, color = '#
       </ResponsiveContainer>
     </div>
   );
-};
+});
+
+FinancialChart.displayName = 'FinancialChart';
 
 export default FinancialChart;
