@@ -25,8 +25,9 @@ a fast LLM before embedding; synthesis answers stream over SSE.
 - **Tests:** `source .venv/bin/activate && python -m pytest backend/tests/ -q`
 - **Frontend build/typecheck:** `cd frontend && npm run build`
 
-Related docs: `docs/reference/BACKEND.md`, `docs/reference/FRONTEND_IMPLEMENTATION.md`,
-`docs/blueprints/*`, and the original code review `REVIEW.md` (root, Codex, 2026-04-29).
+Related docs: `docs/TODO.md` (live backlog), `docs/reference/BACKEND.md`,
+`docs/reference/FRONTEND_IMPLEMENTATION.md`, `docs/blueprints/*`. (The original Codex
+code review — all 7 items closed — has been removed; its findings are captured in §4.)
 Memory index: `~/.claude/projects/.../memory/MEMORY.md`.
 
 ---
