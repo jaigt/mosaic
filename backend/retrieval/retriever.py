@@ -10,8 +10,14 @@ from backend.pipeline.embedder import embed_query
 from backend.models.schemas import DocumentChunk, RetrievedChunk
 from backend.retrieval.filters import build_where_clause
 from backend.retrieval.query_parser import extract_filters
+from backend.retrieval.hybrid import fuse_candidates
+from backend.retrieval.rerank import diversify
 
 logger = logging.getLogger(__name__)
+
+# How many candidates to over-fetch from the vector store before hybrid fusion
+# and diversification narrow back down to top_k.
+_DEFAULT_OVERFETCH = 4
 
 
 def retrieve(
@@ -20,12 +26,21 @@ def retrieve(
     ticker: Optional[str] = None,
     year: Optional[int] = None,
     document_type: Optional[str] = None,
+    hybrid: bool = True,
+    diversify_results: bool = True,
+    overfetch: int = _DEFAULT_OVERFETCH,
+    mmr_lambda: float = 0.7,
 ) -> list[RetrievedChunk]:
     """
     1. Extract metadata filters from query (unless overrides are provided).
     2. Pre-filter LanceDB rows using SQL-like WHERE clause.
-    3. Run vector search on the filtered subset.
+    3. Over-fetch vector candidates, optionally fuse with a lexical ranking
+       (RRF) and diversify (MMR) before narrowing to top_k.
     4. Return top_k RetrievedChunk objects.
+
+    The hybrid/diversify steps are pure post-processing over the fetched
+    candidate set (no extra index, no extra network call). They default on but
+    can be disabled per call for backward-compatible pure-vector behaviour.
     """
     # Use explicit overrides first, fall back to LLM-extracted filters
     auto_filters = extract_filters(query)
@@ -50,14 +65,37 @@ def retrieve(
     # Embed the query
     query_vector = embed_query(query)
 
+    # Over-fetch candidates so the pure RRF + MMR steps have material to work
+    # with; we always fetch at least top_k. With both post-steps disabled this
+    # collapses to the original top_k vector fetch.
+    fetch_k = top_k * overfetch if (hybrid or diversify_results) else top_k
+    fetch_k = max(fetch_k, top_k)
+
     # Execute search
     table = get_table()
-    search = table.search(query_vector).limit(top_k)
+    search = table.search(query_vector).limit(fetch_k)
     if where_clause:
         search = search.where(where_clause)
 
     results = search.to_list()
 
+    candidates = _rows_to_retrieved(results)
+
+    # Step: hybrid lexical fusion over the candidate set (pure, in-memory).
+    if hybrid and candidates:
+        candidates = _apply_hybrid(query, candidates)
+
+    # Step: MMR diversification to suppress near-duplicate chunks (pure).
+    if diversify_results and candidates:
+        candidates = _apply_diversify(candidates, top_k, mmr_lambda)
+
+    retrieved = candidates[:top_k]
+    logger.info(f"Retrieved {len(retrieved)} chunks (from {len(candidates)} candidates)")
+    return retrieved
+
+
+def _rows_to_retrieved(results: list) -> list[RetrievedChunk]:
+    """Map raw LanceDB rows to RetrievedChunk objects. Pure given rows."""
     retrieved: list[RetrievedChunk] = []
     for row in results:
         chunk = DocumentChunk(
@@ -73,6 +111,27 @@ def retrieve(
             raw_payload=row["raw_payload"],
         )
         retrieved.append(RetrievedChunk(chunk=chunk, score=row.get("_distance", 0.0)))
-
-    logger.info(f"Retrieved {len(retrieved)} chunks")
     return retrieved
+
+
+def _apply_hybrid(query: str, candidates: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Fuse vector order with a lexical ranking via RRF. Pure reordering."""
+    items = [
+        {"id": c.chunk.chunk_id, "text": c.chunk.text_content, "_chunk": c}
+        for c in candidates
+    ]
+    fused = fuse_candidates(query, items, text_key="text", id_key="id")
+    return [item["_chunk"] for item in fused]
+
+
+def _apply_diversify(
+    candidates: list[RetrievedChunk], top_k: int, mmr_lambda: float
+) -> list[RetrievedChunk]:
+    """MMR-diversify an already-ranked candidate list. Pure reordering."""
+    items = [
+        {"id": c.chunk.chunk_id, "text": c.chunk.text_content, "_chunk": c}
+        for c in candidates
+    ]
+    # Diversify a slightly larger window than top_k so reordering has headroom.
+    selected = diversify(items, top_k=max(top_k, len(items)), lambda_=mmr_lambda, text_key="text")
+    return [item["_chunk"] for item in selected]
