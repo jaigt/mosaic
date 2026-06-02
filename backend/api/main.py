@@ -12,10 +12,11 @@ import logging
 import threading
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from backend.api.security import enforce_rate_limit, require_api_key
 from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
 from backend.pipeline.ingest import ingest_filing
@@ -30,9 +31,9 @@ app = FastAPI(title="Value Investing RAG API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten this in production
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_allow_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 _SYNTHESIS_SYSTEM_PROMPT = """\
@@ -75,7 +76,7 @@ def health():
 # In a production app, use Redis/Celery.
 _ingest_tasks = {}
 
-@app.post("/ingest")
+@app.post("/ingest", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
 async def ingest(request: IngestRequest, background_tasks: BackgroundTasks):
     """Trigger ingestion of an SEC filing. Returns immediately; status tracked via /ingest/status."""
     task_id = f"{request.ticker}-{request.document_type}-{request.year or 'latest'}"
@@ -111,7 +112,7 @@ async def _run_ingest(task_id: str, request: IngestRequest):
         _ingest_tasks[task_id] = f"failed:{str(e)}"
 
 
-@app.post("/retrieve")
+@app.post("/retrieve", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
 async def retrieve_chunks(request: QueryRequest):
     """Raw retrieval endpoint — returns top-k chunks with scores. Useful for frontend citation panel."""
     chunks = await asyncio.to_thread(
@@ -128,22 +129,34 @@ async def retrieve_chunks(request: QueryRequest):
 @app.get("/filings")
 async def list_filings():
     """List all ingested filings (distinct ticker/doc_type/year) with chunk counts."""
-    try:
-        table = await asyncio.to_thread(get_table)
-        df = await asyncio.to_thread(lambda: table.to_pandas()[["ticker", "document_type", "filing_year"]].drop_duplicates())
-        counts = await asyncio.to_thread(
-            lambda: table.to_pandas()
-            .groupby(["ticker", "document_type", "filing_year"])
+    def _aggregate():
+        table = get_table()
+        # Project only the 3 metadata columns so the heavy vector/text columns
+        # never leave disk; single materialization instead of two full scans.
+        # search().select() requires an explicit limit; use the row count.
+        row_count = table.count_rows()
+        df = (
+            table.search()
+            .select(["ticker", "document_type", "filing_year"])
+            .limit(max(row_count, 1))
+            .to_pandas()
+        )
+        return (
+            df.groupby(["ticker", "document_type", "filing_year"])
             .size()
             .reset_index(name="chunks")
             .to_dict(orient="records")
         )
+
+    try:
+        counts = await asyncio.to_thread(_aggregate)
         return {"filings": counts}
     except Exception:
-        return {"filings": []}
+        logger.exception("Failed to list filings")
+        raise HTTPException(status_code=500, detail="Failed to list filings")
 
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
 async def chat(request: ChatRequest):
     """
     Conversational endpoint. Returns a streaming SSE response.
@@ -182,8 +195,18 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
 
         # Step 2: Build context for synthesis
         sources_context = _format_sources(chunks)
+        history_context = _format_history(
+            request.conversation_history, current_message=request.message
+        )
+        history_block = (
+            f"CONVERSATION SO FAR (for resolving follow-up references):\n"
+            f"{history_context}\n\n"
+            if history_context
+            else ""
+        )
         full_prompt = (
             f"{_SYNTHESIS_SYSTEM_PROMPT}\n\n"
+            f"{history_block}"
             f"SOURCE DOCUMENTS:\n{sources_context}\n\n"
             f"USER QUESTION: {request.message}"
         )
@@ -231,6 +254,50 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
         logger.exception("Chat stream error")
         yield sse("error", str(e))
         yield sse("done", None)
+
+
+def _format_history(
+    history,
+    max_turns: int = 6,
+    max_chars: int = 1000,
+    current_message: str = None,
+) -> str:
+    """Render prior conversation turns into a compact transcript for the prompt.
+
+    Bounded by the last ``max_turns`` valid messages and ``max_chars`` per
+    message. Malformed entries (non-dict, missing role/content, blank content)
+    are skipped. If ``current_message`` is supplied and matches the final user
+    turn, that trailing duplicate is dropped (the frontend appends the live
+    message to history before sending).
+    """
+    cleaned = []
+    for entry in history or []:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role")
+        content = entry.get("content")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        content = content.strip()
+        if not content:
+            continue
+        cleaned.append((role, content))
+
+    if (
+        current_message is not None
+        and cleaned
+        and cleaned[-1] == ("user", current_message.strip())
+    ):
+        cleaned.pop()
+
+    if not cleaned:
+        return ""
+
+    lines = []
+    for role, content in cleaned[-max_turns:]:
+        label = "User" if role == "user" else "Assistant"
+        lines.append(f"{label}: {content[:max_chars]}")
+    return "\n".join(lines)
 
 
 def _format_sources(chunks) -> str:

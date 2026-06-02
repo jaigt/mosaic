@@ -33,7 +33,7 @@ class ChatRequest(BaseModel):
     conversation_history: list[dict] = Field(default_factory=list)
     ticker: Optional[str] = None
     year: Optional[int] = None
-    document_type: Optional[str] = None
+    document_type: Optional[Literal["10-K", "10-Q", "8-K"]] = None
 
 
 class IngestRequest(BaseModel):

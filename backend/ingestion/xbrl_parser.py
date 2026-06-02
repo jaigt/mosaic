@@ -23,8 +23,10 @@ from backend.ingestion.parser import ParsedElement
 
 logger = logging.getLogger(__name__)
 
-# Maps edgartools XBRL attribute names → friendly SEC section labels.
-# These will appear as sec_item_section metadata on the resulting chunks.
+# Maps edgartools `XBRL.statements` accessor METHODS → friendly SEC section
+# labels. In edgartools 4.x the statements moved off the XBRL object onto the
+# `.statements` accessor and became methods (note: `cashflow_statement`, not
+# `cash_flow_statement`). Each returns a Statement exposing `.to_dataframe()`.
 _STATEMENT_CONFIG = [
     (
         "income_statement",
@@ -35,7 +37,7 @@ _STATEMENT_CONFIG = [
         "Item 8: Financial Statements - Balance Sheet",
     ),
     (
-        "cash_flow_statement",
+        "cashflow_statement",
         "Item 8: Financial Statements - Cash Flow Statement",
     ),
 ]
@@ -95,23 +97,32 @@ def parse_xbrl_statements(xbrl_data) -> list[ParsedElement]:
     """
     elements: list[ParsedElement] = []
 
-    for attr_name, section_label in _STATEMENT_CONFIG:
-        stmt = getattr(xbrl_data, attr_name, None)
-        if stmt is None:
-            logger.warning(f"XBRL: no '{attr_name}' attribute on xbrl_data — skipping")
+    statements = getattr(xbrl_data, "statements", None)
+    if statements is None:
+        logger.warning("XBRL: object has no 'statements' accessor — skipping")
+        return elements
+
+    for method_name, section_label in _STATEMENT_CONFIG:
+        accessor = getattr(statements, method_name, None)
+        if accessor is None:
+            logger.warning(f"XBRL: no '{method_name}' accessor — skipping")
             continue
 
         try:
+            stmt = accessor()
+            if stmt is None:
+                logger.warning(f"XBRL: '{method_name}' returned None — skipping")
+                continue
             df = stmt.to_dataframe()
         except Exception as e:
-            logger.warning(f"XBRL: failed to call to_dataframe() on {attr_name}: {e}")
+            logger.warning(f"XBRL: failed to extract {method_name}: {e}")
             continue
 
         if df is None or df.empty:
-            logger.warning(f"XBRL: empty DataFrame for {attr_name} — skipping")
+            logger.warning(f"XBRL: empty DataFrame for {method_name} — skipping")
             continue
 
-        title = attr_name.replace("_", " ").title()
+        title = method_name.replace("_", " ").title()
         text_content = _dataframe_to_text(df, title)
         raw_csv = _dataframe_to_csv(df)
 
@@ -123,7 +134,7 @@ def parse_xbrl_statements(xbrl_data) -> list[ParsedElement]:
         )
         elements.append(element)
         logger.info(
-            f"XBRL: extracted {attr_name} — {len(df)} rows, "
+            f"XBRL: extracted {method_name} — {len(df)} rows, "
             f"{len(text_content)} chars"
         )
 

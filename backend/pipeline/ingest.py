@@ -16,13 +16,18 @@ summarize → embed → upsert pipeline. Nothing is discarded.
 """
 import logging
 import re
-import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from backend.ingestion.edgar_fetcher import get_filing_html, get_filing_xbrl
+from backend.ingestion.edgar_fetcher import (
+    resolve_filing,
+    html_from_filing,
+    xbrl_from_filing,
+)
 from backend.ingestion.parser import parse_filing_html, ParsedElement
 from backend.ingestion.xbrl_parser import parse_xbrl_statements
 from backend.models.schemas import DocumentChunk
+from backend.pipeline.ratelimit import TokenBucket
 from backend.pipeline.table_summarizer import summarize_table
 from backend.pipeline.embedder import embed_texts
 from backend.pipeline.store import upsert_chunks, generate_chunk_id
@@ -33,6 +38,15 @@ logger = logging.getLogger(__name__)
 _TEXT_CHUNK_TARGET = 2500
 # Minimum characters for any chunk to be worth embedding
 _MIN_CHUNK_LENGTH = 200
+
+# ── Table-summarization parallelism / rate limiting ──────────────────────────
+# Requests-per-minute budget for the table-summary LLM and the max number of
+# concurrent in-flight summary calls. Module-level (not config) on purpose:
+# config.py is owned elsewhere. A token bucket (see ratelimit.TokenBucket)
+# enforces _TABLE_RPM across the worker threads, replacing the old fixed
+# per-table time.sleep(0.5).
+_TABLE_RPM = 15
+_TABLE_MAX_CONCURRENCY = 5
 
 
 def _merge_text_elements(elements: list[ParsedElement]) -> list[ParsedElement]:
@@ -168,19 +182,32 @@ def _elements_to_chunks(
         index_offset: Offset added to element index for chunk_id uniqueness
                       (prevents collisions when merging HTML and XBRL elements).
     """
-    chunks: list[DocumentChunk] = []
-    texts_to_embed: list[str] = []
+    # Keep elements that clear the minimum length, preserving their ORIGINAL
+    # positional index `i` (used for chunk_id) so ordering and the
+    # index→chunk mapping stay byte-for-byte identical to the serial version.
+    kept: list[tuple[int, ParsedElement]] = [
+        (i, el) for i, el in enumerate(elements) if len(el.content) >= _MIN_CHUNK_LENGTH
+    ]
 
-    for i, element in enumerate(elements):
-        if len(element.content) < _MIN_CHUNK_LENGTH:
-            continue
+    # Pre-clean table HTML up front (cheap, deterministic) so the parallel pass
+    # only does the network-bound LLM call.
+    table_indices = [pos for pos, (_, el) in enumerate(kept) if el.element_type == "table"]
+    cleaned_html: dict[int, str] = {
+        pos: _clean_table_html(kept[pos][1].raw_html or kept[pos][1].content)
+        for pos in table_indices
+    }
 
-        if element.element_type == "table":
-            # Two-pass strategy: LLM converts raw table → semantic summary for embedding.
-            # Falls back to raw table text if the LLM call fails (rate limit, quota, etc.)
-            raw_html = _clean_table_html(element.raw_html or element.content)
+    # Parallel table-summarization pass governed by a thread-safe token bucket.
+    # Only the LLM CALLS are parallelized; results are reassembled in order below.
+    summaries: dict[int, str] = {}
+    if table_indices:
+        bucket = TokenBucket(rate_per_sec=_TABLE_RPM / 60.0, capacity=_TABLE_MAX_CONCURRENCY)
+
+        def _summarize_one(pos: int) -> str:
+            element = kept[pos][1]
+            raw_html = cleaned_html[pos]
             try:
-                time.sleep(0.5)  # Respect free-tier rate limits (2 RPM safety margin)
+                bucket.acquire()  # throttle to _TABLE_RPM across all workers
                 text_content = summarize_table(
                     table_content=raw_html,
                     ticker=ticker,
@@ -191,7 +218,21 @@ def _elements_to_chunks(
             except Exception as e:
                 logger.warning(f"Table summarization failed (using raw text fallback): {e}")
                 text_content = element.content
-            raw_payload = raw_html
+            return text_content
+
+        workers = min(_TABLE_MAX_CONCURRENCY, len(table_indices))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            # Map preserves submission order; we re-key by position to be explicit.
+            for pos, summary in zip(table_indices, executor.map(_summarize_one, table_indices)):
+                summaries[pos] = summary
+
+    # Reassemble in original element order.
+    chunks: list[DocumentChunk] = []
+    texts_to_embed: list[str] = []
+    for pos, (i, element) in enumerate(kept):
+        if element.element_type == "table":
+            text_content = summaries[pos]
+            raw_payload = cleaned_html[pos]
             chunk_type = "table"
         else:
             # Narrative text: embed as-is
@@ -234,25 +275,32 @@ def ingest_filing(
     """
     all_elements: list[ParsedElement] = []
 
+    # ── Resolve the filing ONCE ──────────────────────────────────────────────
+    # Both PATH A (HTML) and PATH B (XBRL) operate on the SAME filing. Resolving
+    # the company + filing list a single time here avoids the previous double
+    # EDGAR round trip (get_filing_html and get_filing_xbrl each re-resolved).
+    logger.info(f"Resolving {document_type} filing for {ticker} (year={year})")
+    filing, meta = resolve_filing(ticker, document_type, year)
+
     # ── PATH A: Narrative text from HTML ─────────────────────────────────────
     # Fetches the primary HTML document and partitions it into section-tagged
     # elements (NarrativeText, Table, Title).  We keep ALL element types here
     # (text AND tables from HTML) as a fallback for any financial data that
     # isn't captured in XBRL (e.g., non-standard tables, segment breakdowns).
     logger.info(f"[PATH A] Fetching HTML for {ticker} {document_type} (year={year})")
-    html_content, meta = get_filing_html(ticker, document_type, year)
+    html_content = html_from_filing(filing)
     html_doc = parse_filing_html(html_content)
     all_elements.extend(html_doc.elements)
     logger.info(f"[PATH A] {len(html_doc.elements)} elements from HTML")
 
     # ── PATH B: Structured financials from XBRL ───────────────────────────────
-    # Fetches the XBRL instance document and extracts the three core financial
-    # statements as clean DataFrames.  These replace the noisy HTML-extracted
+    # Extracts the three core financial statements as clean DataFrames from the
+    # already-resolved filing's XBRL.  These replace the noisy HTML-extracted
     # versions of the same tables with accurate, properly labelled data.
     # Gracefully skipped if XBRL is unavailable (older filings, foreign issuers).
     try:
         logger.info(f"[PATH B] Fetching XBRL for {ticker} {document_type} (year={year})")
-        xbrl_data, _xbrl_meta = get_filing_xbrl(ticker, document_type, year)
+        xbrl_data = xbrl_from_filing(filing)
         xbrl_elements = parse_xbrl_statements(xbrl_data)
         all_elements.extend(xbrl_elements)
         logger.info(f"[PATH B] {len(xbrl_elements)} financial statement(s) from XBRL")

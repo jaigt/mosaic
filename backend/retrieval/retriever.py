@@ -8,6 +8,7 @@ from typing import Optional
 from backend.pipeline.store import get_table
 from backend.pipeline.embedder import embed_query
 from backend.models.schemas import DocumentChunk, RetrievedChunk
+from backend.retrieval.filters import build_where_clause
 from backend.retrieval.query_parser import extract_filters
 
 logger = logging.getLogger(__name__)
@@ -32,16 +33,18 @@ def retrieve(
     effective_year = year or auto_filters.get("year")
     effective_doc_type = document_type or auto_filters.get("document_type")
 
-    # Build WHERE clause
-    conditions: list[str] = []
-    if effective_ticker:
-        conditions.append(f"ticker = '{effective_ticker.upper()}'")
-    if effective_year:
-        conditions.append(f"filing_year = {int(effective_year)}")
-    if effective_doc_type:
-        conditions.append(f"document_type = '{effective_doc_type}'")
-
-    where_clause = " AND ".join(conditions) if conditions else None
+    # Build a validated/escaped WHERE clause. Invalid filter values (e.g. an
+    # LLM-hallucinated ticker, or an injection attempt) are dropped rather than
+    # interpolated raw.
+    try:
+        where_clause = build_where_clause(
+            ticker=effective_ticker,
+            year=effective_year,
+            document_type=effective_doc_type,
+        )
+    except ValueError as e:
+        logger.warning(f"Ignoring invalid retrieval filters: {e}")
+        where_clause = None
     logger.info(f"Retrieving: query='{query[:60]}' filters={where_clause} top_k={top_k}")
 
     # Embed the query
