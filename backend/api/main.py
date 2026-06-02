@@ -10,24 +10,43 @@ import asyncio
 import json
 import logging
 import threading
-from typing import AsyncGenerator
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import AsyncGenerator, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks
+from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from backend.api.observability import (
+    get_request_id,
+    install_request_id_middleware,
+    log_event,
+)
 from backend.api.security import enforce_rate_limit, require_api_key
 from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
 from backend.pipeline.ingest import ingest_filing
 from backend.pipeline.llm import stream_generate
 from backend.pipeline.store import get_table
+from backend.retrieval.reformulate import condense_query
 from backend.retrieval.retriever import retrieve
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# Max tokens buffered between the (paid) producer thread and the SSE consumer.
+# Keeps memory bounded and lets the producer block (and thus notice a stop
+# signal) instead of racing ahead of a slow/disconnected client.
+_SSE_QUEUE_MAXSIZE = 64
+# How often the stream re-checks whether the client has disconnected (seconds).
+_DISCONNECT_POLL_INTERVAL = 0.25
+
 app = FastAPI(title="Value Investing RAG API", version="0.1.0")
+
+# Request-ID middleware first so every downstream log carries the id.
+install_request_id_middleware(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,31 +91,98 @@ def health():
     }}
 
 
-# Simple in-memory status tracker for ingestion tasks
-# In a production app, use Redis/Celery.
-_ingest_tasks = {}
+class IngestState(str, Enum):
+    """Lifecycle states for a background ingestion task."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class IngestTask:
+    """Durable, typed status for a single ingestion task.
+
+    ``legacy_status`` reproduces the original stringly-typed contract
+    ("running" / "completed:N" / "failed:msg") so existing clients keep
+    working, while ``state``/``chunks``/``error``/timestamps are the new
+    structured fields.
+    """
+
+    task_id: str
+    state: IngestState = IngestState.RUNNING
+    chunks: Optional[int] = None
+    error: Optional[str] = None
+    started_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
+
+    @property
+    def legacy_status(self) -> str:
+        if self.state is IngestState.COMPLETED:
+            return f"completed:{self.chunks}"
+        if self.state is IngestState.FAILED:
+            return f"failed:{self.error}"
+        return self.state.value  # "running"
+
+    def mark_completed(self, chunks: int) -> None:
+        self.state = IngestState.COMPLETED
+        self.chunks = chunks
+        self.updated_at = time.time()
+
+    def mark_failed(self, error: str) -> None:
+        self.state = IngestState.FAILED
+        self.error = error
+        self.updated_at = time.time()
+
+    def to_response(self) -> dict:
+        """Backward-compatible JSON: keeps ``task_id`` + ``status`` (the legacy
+        string) and adds the new typed fields alongside."""
+        return {
+            "task_id": self.task_id,
+            "status": self.legacy_status,
+            "state": self.state.value,
+            "chunks": self.chunks,
+            "error": self.error,
+            "started_at": self.started_at,
+            "updated_at": self.updated_at,
+        }
+
+
+# In-memory status tracker for ingestion tasks (single-worker POC).
+# In a production app, use Redis/Celery for cross-process durability.
+_ingest_tasks: dict = {}
+_ingest_lock = threading.Lock()
+
 
 @app.post("/ingest", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
 async def ingest(request: IngestRequest, background_tasks: BackgroundTasks):
     """Trigger ingestion of an SEC filing. Returns immediately; status tracked via /ingest/status."""
     task_id = f"{request.ticker}-{request.document_type}-{request.year or 'latest'}"
-    
-    if _ingest_tasks.get(task_id) == "running":
-        return {"status": "already_running", "task_id": task_id}
 
-    _ingest_tasks[task_id] = "running"
+    with _ingest_lock:
+        existing = _ingest_tasks.get(task_id)
+        if existing is not None and existing.state is IngestState.RUNNING:
+            return {"status": "already_running", "task_id": task_id}
+        _ingest_tasks[task_id] = IngestTask(task_id=task_id)
+
+    log_event("INFO", "ingest_started", task_id=task_id, ticker=request.ticker,
+              document_type=request.document_type, year=request.year)
     background_tasks.add_task(_run_ingest, task_id, request)
-    
+
     return {"status": "started", "task_id": task_id}
 
 
 @app.get("/ingest/status/{task_id}")
 async def get_ingest_status(task_id: str):
-    status = _ingest_tasks.get(task_id, "not_found")
-    return {"task_id": task_id, "status": status}
+    task = _ingest_tasks.get(task_id)
+    if task is None:
+        return {"task_id": task_id, "status": "not_found", "state": "not_found",
+                "chunks": None, "error": None}
+    return task.to_response()
 
 
 async def _run_ingest(task_id: str, request: IngestRequest):
+    task = _ingest_tasks.get(task_id)
     try:
         logger.info(f"Starting background ingestion for {task_id}")
         count = await asyncio.to_thread(
@@ -105,11 +191,14 @@ async def _run_ingest(task_id: str, request: IngestRequest):
             document_type=request.document_type,
             year=request.year,
         )
-        _ingest_tasks[task_id] = f"completed:{count}"
-        logger.info(f"Background ingestion completed for {task_id}: {count} chunks")
+        if task is not None:
+            task.mark_completed(count)
+        log_event("INFO", "ingest_completed", task_id=task_id, chunks=count)
     except Exception as e:
         logger.exception(f"Background ingestion failed for {task_id}")
-        _ingest_tasks[task_id] = f"failed:{str(e)}"
+        if task is not None:
+            task.mark_failed(str(e))
+        log_event("ERROR", "ingest_failed", task_id=task_id, error=str(e))
 
 
 @app.post("/retrieve", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
@@ -157,29 +246,55 @@ async def list_filings():
 
 
 @app.post("/chat", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
     """
     Conversational endpoint. Returns a streaming SSE response.
     Each event is a JSON object: {"type": "status"|"chunk"|"sources"|"done", "data": ...}
     """
     return StreamingResponse(
-        _chat_stream(request),
+        _chat_stream(request, http_request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
+async def _client_gone(http_request) -> bool:
+    """Best-effort check for client disconnect.
+
+    ``http_request`` may be a real Starlette Request or a lightweight stand-in
+    in tests; tolerate a missing ``is_disconnected``.
+    """
+    is_disconnected = getattr(http_request, "is_disconnected", None)
+    if is_disconnected is None:
+        return False
+    try:
+        return await is_disconnected()
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerator[str, None]:
+    request_id = get_request_id()
+
     def sse(event_type: str, data) -> str:
         payload = json.dumps({"type": event_type, "data": data})
         return f"data: {payload}\n\n"
 
     try:
-        # Step 1: Retrieval
+        # Step 1: Retrieval.
+        # For follow-up turns, condense the (possibly elliptical) message into a
+        # standalone search query using the conversation history. This only
+        # affects what we retrieve — the original message is still used for
+        # synthesis and history formatting below. condense_query degrades
+        # gracefully to the original message if the heuristic skips it or the
+        # LLM call fails, so retrieval is never broken by reformulation.
         yield sse("status", "Extracting filters from query...")
+        search_query = await asyncio.to_thread(
+            condense_query, request.conversation_history, request.message
+        )
         chunks = await asyncio.to_thread(
-            retrieve, 
-            query=request.message, 
+            retrieve,
+            query=search_query,
             top_k=5,
             ticker=request.ticker,
             year=request.year,
@@ -211,27 +326,81 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
             f"USER QUESTION: {request.message}"
         )
 
-        # Step 3: Stream synthesis response token-by-token
-        # stream_generate is a sync generator; bridge it to async via a queue
-        # so tokens are forwarded as they arrive rather than buffered.
+        # Step 3: Stream synthesis response token-by-token.
+        # stream_generate is a sync generator; bridge it to async via a BOUNDED
+        # queue so tokens are forwarded as they arrive without buffering without
+        # limit. A cooperative threading.Event lets the producer stop calling the
+        # (paid) LLM the moment the client disconnects or the generator is closed.
         loop = asyncio.get_event_loop()
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=_SSE_QUEUE_MAXSIZE)
+        stop_event = threading.Event()
         _DONE = object()
+
+        def _enqueue(item) -> None:
+            # Runs on the event loop thread. If the consumer is slow and the
+            # queue is full, drop the token rather than grow memory unbounded;
+            # back-pressure is instead signalled to the producer via stop_event.
+            try:
+                queue.put_nowait(item)
+            except asyncio.QueueFull:
+                pass
+
+        def _schedule(item) -> None:
+            # The consumer loop may already be closed if the request ended
+            # abruptly; treat that as another stop signal rather than raising.
+            try:
+                loop.call_soon_threadsafe(_enqueue, item)
+            except RuntimeError:
+                stop_event.set()
 
         def _produce():
             try:
                 for text in stream_generate(full_prompt, model=settings.synthesis_model):
-                    loop.call_soon_threadsafe(queue.put_nowait, text)
+                    if stop_event.is_set():
+                        break
+                    # If the queue is full the client isn't keeping up; pause
+                    # briefly and re-check the stop flag instead of spinning.
+                    while queue.full() and not stop_event.is_set():
+                        time.sleep(0.01)
+                    if stop_event.is_set():
+                        break
+                    _schedule(text)
             finally:
-                loop.call_soon_threadsafe(queue.put_nowait, _DONE)
+                _schedule(_DONE)
 
-        threading.Thread(target=_produce, daemon=True).start()
+        producer = threading.Thread(target=_produce, daemon=True)
+        producer.start()
 
-        while True:
-            item = await queue.get()
-            if item is _DONE:
-                break
-            yield sse("chunk", item)
+        try:
+            while True:
+                # Wait for the next token, but wake periodically to poll for a
+                # client disconnect even if the producer has gone quiet.
+                try:
+                    item = await asyncio.wait_for(
+                        queue.get(), timeout=_DISCONNECT_POLL_INTERVAL
+                    )
+                except asyncio.TimeoutError:
+                    if await _client_gone(http_request):
+                        stop_event.set()
+                        log_event("INFO", "chat_client_disconnected",
+                                  request_id=request_id)
+                        return
+                    continue
+
+                if item is _DONE:
+                    break
+                yield sse("chunk", item)
+
+                if await _client_gone(http_request):
+                    stop_event.set()
+                    log_event("INFO", "chat_client_disconnected",
+                              request_id=request_id)
+                    return
+        finally:
+            # Covers normal completion, disconnect, and GeneratorExit (the
+            # consumer closing us): always signal the producer to stop pumping
+            # paid tokens.
+            stop_event.set()
 
         # Step 4: Send source metadata for frontend citation panel
         sources_payload = [
@@ -252,7 +421,11 @@ async def _chat_stream(request: ChatRequest) -> AsyncGenerator[str, None]:
 
     except Exception as e:
         logger.exception("Chat stream error")
-        yield sse("error", str(e))
+        log_event("ERROR", "chat_stream_error", request_id=request_id, error=str(e))
+        # SSE contract: error `data` is a plain string (the frontend renders it
+        # directly). request_id is preserved in the server log above and echoed
+        # via the X-Request-ID response header for correlation.
+        yield sse("error", f"{e} (ref: {request_id})")
         yield sse("done", None)
 
 
