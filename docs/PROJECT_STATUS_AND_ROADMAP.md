@@ -59,8 +59,11 @@ Memory index: `~/.claude/projects/.../memory/MEMORY.md`.
 ## 3. Current state (after this engagement)
 
 **Verification status as of last update:**
-- ✅ `pytest backend/tests/` → **44 passed**
-- ✅ `npm run build` → clean (only the pre-existing recharts chunk-size advisory)
+- ✅ `pytest backend/tests/` → **99 passed**
+- ✅ `npm run build` → clean (only the pre-existing recharts chunk-size advisory);
+  `npm test` (Vitest) → 9 passed
+- ✅ All work **committed** on `develop` (6 commits: backend security/correctness,
+  frontend XSS/perf, housekeeping, backend RAG, backend ops, frontend design system)
 - ✅ Live XBRL extraction (AAPL 10-Q) → 3 statements
 - ✅ Live `/filings` aggregate → works
 - ✅ Refactored ingestion runs end-to-end through parse + parallel table
@@ -70,7 +73,25 @@ Memory index: `~/.claude/projects/.../memory/MEMORY.md`.
 - ⏳ NOT verified live: actual Gemini summarization/embedding/synthesis round-trips
   (blocked on the API key)
 
-**Nothing has been committed.** All changes are staged/working-tree only.
+**All work is committed** on `develop` (was uncommitted at the previous update).
+
+### 3.1 Second round (RAG quality + ops + design system) — committed
+Dispatched as 3 parallel agents with strict file-ownership partitioning, then
+integrated + verified by the parent:
+- **RAG quality** (`backend/retrieval/`): hybrid retrieval (RRF + BM25-lite, no
+  FTS index), MMR diversification, history-aware query reformulation
+  (condense-question, graceful fallback). Wired into `_chat_stream` retrieval
+  (retrieval only; synthesis still uses the original message). **No new deps.**
+- **Ops robustness** (`backend/api/`): bounded SSE queue + client-disconnect
+  handling (stops the paid LLM producer when the client leaves), typed ingest
+  task state (backward-compatible endpoints), X-Request-ID middleware +
+  structured `log_event`.
+- **Design system** (`frontend/`): Tailwind v4 (CSS-first) + "Ledger Terminal"
+  token layer + `ui/` primitives (Button/Input/Select/Modal/Badge/Card/Spinner),
+  components refactored onto them; Vitest added.
+- **Cross-agent fix:** SSE `error` data kept a plain string (frontend contract) —
+  request_id moved to logs + `ref:` suffix rather than an object payload.
+- Still blocked on the invalid `GOOGLE_API_KEY` for live LLM round-trips.
 
 ---
 
@@ -209,15 +230,17 @@ Dispatched as 3 file-disjoint parallel agents + inline auth work:
 
 ## 6. Full prioritized roadmap (forward-looking)
 
-1. **Refresh GOOGLE_API_KEY → live e2e verify → commit P0+P1.** (loose ends)
+1. **Refresh GOOGLE_API_KEY → live e2e verify.** (loose ends — STILL THE TOP
+   BLOCKER; all code below is tested but not live-verified end to end.)
 2. **Auth follow-through:** frontend `X-API-Key` header when configured.
-3. **P2 styling system** (Tailwind v4 + `ui/` primitives) — unblocks all visual work.
-   Add Vitest first.
-4. **RAG quality:** history-aware query reformulation (condense-question) so bare
-   follow-ups retrieve correctly — completes the multi-turn work in §4.6; then chunk
-   overlap, re-ranking, hybrid search, row-aware truncation.
-5. **SSE/ops robustness:** bounded queue, disconnect handling, durable ingest tasks,
-   structured logging + request IDs.
+3. ~~P2 styling system~~ **DONE (§3.1)** — Tailwind v4 + `ui/` primitives + Vitest.
+   Visual polish work is now unblocked.
+4. **RAG quality:** ~~reformulation, re-ranking, hybrid search~~ **DONE (§3.1)**;
+   remaining: chunk overlap, row-aware table truncation, eval harness to measure
+   whether hybrid/MMR actually help on real queries.
+5. ~~SSE/ops robustness~~ **DONE (§3.1)** — bounded queue, disconnect handling,
+   typed ingest tasks, structured logging + request IDs. Remaining: cross-process
+   durability (Redis/Celery) if it ever goes multi-worker.
 6. **P3 UX:** clickable citations, axe/wire dead UI, accessibility, responsive.
 7. **Infra:** Python 3.11+, lock deps (`uv`/`pip-tools`), fix deprecation warnings,
    move table cleanup off regex.
