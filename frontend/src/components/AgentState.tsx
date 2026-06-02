@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Spinner, cn } from './ui';
 
 export interface AgentStep {
   id: string;
@@ -18,55 +19,53 @@ const AgentState: React.FC<AgentStateProps> = ({ steps, isActive }) => {
   if (!isActive && steps.length === 0) return null;
 
   return (
-    <div style={{
-      margin: '10px 0',
-      border: '1px solid var(--border-color)',
-      borderRadius: '8px',
-      overflow: 'hidden',
-      backgroundColor: 'var(--bg-secondary)'
-    }}>
-      <div
+    <div className="vr-rise overflow-hidden rounded-lg border border-line bg-ink-800/70">
+      <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        style={{
-          padding: '12px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer',
-          backgroundColor: '#222831'
-        }}
+        aria-expanded={isExpanded}
+        className="flex w-full items-center justify-between bg-white/[0.02] px-4 py-3 text-left transition-colors hover:bg-white/[0.04]"
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {isActive
-            ? <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent-color)' }} />
-            : <div style={{ width: '8px', height: '8px', backgroundColor: 'var(--success-color)', borderRadius: '50%' }} />
-          }
-          <span style={{ fontSize: '14px', fontWeight: '600' }}>
-            {isActive ? 'Analyst is thinking...' : 'Analysis complete'}
+        <div className="flex items-center gap-2.5">
+          {isActive ? (
+            <Spinner size={15} className="text-amber-400" label="Analyst working" />
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-ledger-400" />
+          )}
+          <span className="font-mono text-[12px] uppercase tracking-wider text-fg-200">
+            {isActive ? 'Analyst is working' : 'Analysis complete'}
           </span>
         </div>
-        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-      </div>
+        {isExpanded ? (
+          <ChevronDown size={15} className="text-fg-400" />
+        ) : (
+          <ChevronRight size={15} className="text-fg-400" />
+        )}
+      </button>
 
       {isExpanded && steps.length > 0 && (
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
+        <ol className="border-t border-line px-4 py-3">
           {steps.map((step) => (
-            <div key={step.id} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '10px',
-              opacity: step.status === 'pending' ? 0.5 : 1
-            }}>
-              <div style={{ width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {step.status === 'completed' && <div style={{ width: '8px', height: '8px', backgroundColor: 'var(--success-color)', borderRadius: '50%' }} />}
-                {step.status === 'running' && <Loader2 size={14} className="animate-spin" />}
-                {step.status === 'pending' && <div style={{ width: '8px', height: '8px', border: '1px solid var(--text-secondary)', borderRadius: '50%' }} />}
-              </div>
-              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{step.label}</span>
-            </div>
+            <li
+              key={step.id}
+              className={cn(
+                'flex items-center gap-3 py-1.5 text-[13px]',
+                step.status === 'pending' ? 'opacity-50' : 'opacity-100',
+              )}
+            >
+              <span className="grid h-4 w-4 place-items-center">
+                {step.status === 'completed' && <span className="h-2 w-2 rounded-full bg-ledger-400" />}
+                {step.status === 'running' && <Spinner size={13} className="text-amber-400" />}
+                {step.status === 'pending' && (
+                  <span className="h-2 w-2 rounded-full border border-fg-400" />
+                )}
+              </span>
+              <span className={cn(step.status === 'completed' ? 'text-fg-300' : 'text-fg-200')}>
+                {step.label}
+              </span>
+            </li>
           ))}
-        </div>
+        </ol>
       )}
     </div>
   );

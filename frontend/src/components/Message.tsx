@@ -4,6 +4,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import FinancialChart from './Visualizer/FinancialChart';
 import { Source } from '../api';
+import { Badge, cn } from './ui';
 
 interface Citation {
   id: string;
@@ -21,46 +22,37 @@ interface MessageProps {
 
 // Hoisted to module scope: this object captures nothing dynamic, so re-creating
 // it on every render needlessly forces react-markdown to re-render its subtree.
+// Styling is class-based so it inherits the shared token palette.
+// react-markdown passes a `node` prop that React doesn't recognize on DOM
+// elements; strip it before spreading the rest onto the host element.
+const omitNode = <T extends { node?: unknown }>(props: T) => {
+  const rest = { ...props };
+  delete rest.node;
+  return rest;
+};
+
 const markdownComponents: Components = {
-  a: ({ node, ...props }) => (
-    <a {...props} style={{ color: 'var(--accent-color)', textDecoration: 'none' }} target="_blank" rel="noreferrer" />
+  a: (props) => (
+    <a {...omitNode(props)} className="text-amber-300 underline-offset-2 hover:underline" target="_blank" rel="noreferrer" />
   ),
-  p: ({ node, ...props }) => <p {...props} style={{ marginBottom: '12px' }} />,
-  ul: ({ node, ...props }) => <ul {...props} style={{ marginBottom: '12px', paddingLeft: '20px' }} />,
-  li: ({ node, ...props }) => <li {...props} style={{ marginBottom: '4px' }} />,
-  code: ({ node, ...props }) => (
-    <code {...props} style={{
-      backgroundColor: 'rgba(255,255,255,0.05)',
-      padding: '2px 4px',
-      borderRadius: '4px',
-      fontFamily: 'var(--font-mono)',
-      fontSize: '0.9em'
-    }} />
+  p: (props) => <p {...omitNode(props)} className="mb-3 last:mb-0" />,
+  ul: (props) => <ul {...omitNode(props)} className="mb-3 list-disc pl-5 marker:text-fg-400" />,
+  ol: (props) => <ol {...omitNode(props)} className="mb-3 list-decimal pl-5 marker:text-fg-400" />,
+  li: (props) => <li {...omitNode(props)} className="mb-1" />,
+  code: (props) => (
+    <code {...omitNode(props)} className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[0.88em] text-amber-200" />
   ),
-  table: ({ node, ...props }) => (
-    <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
-      <table {...props} style={{
-        width: '100%',
-        borderCollapse: 'collapse',
-        fontSize: '13px',
-        border: '1px solid var(--border-color)'
-      }} />
+  table: (props) => (
+    <div className="mb-4 overflow-x-auto rounded-md border border-line">
+      <table {...omitNode(props)} className="w-full border-collapse font-mono text-[13px] tabular-nums" />
     </div>
   ),
-  th: ({ node, ...props }) => (
-    <th {...props} style={{
-      padding: '8px',
-      backgroundColor: 'rgba(255,255,255,0.02)',
-      border: '1px solid var(--border-color)',
-      textAlign: 'left'
-    }} />
+  th: (props) => (
+    <th {...omitNode(props)} className="border-b border-line bg-white/[0.03] px-3 py-2 text-left font-semibold text-fg-300" />
   ),
-  td: ({ node, ...props }) => (
-    <td {...props} style={{
-      padding: '8px',
-      border: '1px solid var(--border-color)'
-    }} />
-  )
+  td: (props) => (
+    <td {...omitNode(props)} className="border-b border-line-soft px-3 py-2" />
+  ),
 };
 
 const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming }) => {
@@ -92,74 +84,63 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
   }, [content, chartData, isUser]);
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      gap: '16px', 
-      alignItems: 'flex-start',
-      maxWidth: '100%',
-      marginBottom: '8px'
-    }}>
-      <div style={{
-        width: '36px', height: '36px', borderRadius: '8px', flexShrink: 0,
-        backgroundColor: isUser ? 'var(--bg-secondary)' : 'rgba(0, 123, 255, 0.1)',
-        border: `1px solid ${isUser ? 'var(--border-color)' : 'rgba(0, 123, 255, 0.2)'}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
-        {isUser
-          ? <User size={18} style={{ color: 'var(--text-secondary)' }} />
-          : <Bot size={18} style={{ color: 'var(--accent-color)' }} />
-        }
+    <div className="vr-rise flex max-w-full items-start gap-4">
+      <div
+        className={cn(
+          'grid h-9 w-9 shrink-0 place-items-center rounded-md border',
+          isUser
+            ? 'border-line-strong bg-ink-700 text-fg-300'
+            : 'border-amber-400/25 bg-amber-400/10 text-amber-400',
+        )}
+        aria-hidden="true"
+      >
+        {isUser ? <User size={17} /> : <Bot size={17} />}
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          padding: isUser ? '0' : '16px', 
-          borderRadius: '12px',
-          backgroundColor: isUser ? 'transparent' : 'var(--bg-secondary)',
-          border: isUser ? 'none' : '1px solid var(--border-color)',
-          fontSize: '15px', 
-          lineHeight: '1.7', 
-          color: 'var(--text-primary)',
-          overflowWrap: 'anywhere'
-        }}>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-fg-400">
+            {isUser ? 'You' : 'Analyst'}
+          </span>
+        </div>
+        <div
+          className={cn(
+            'overflow-hidden text-[15px] leading-[1.7] text-fg-100 [overflow-wrap:anywhere]',
+            isUser
+              ? 'rounded-lg border border-line bg-ink-800/60 px-4 py-3'
+              : 'rounded-lg border border-line bg-ink-800/80 px-4 py-4',
+          )}
+        >
           {cleanContent ? (
             <div className="markdown-content">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
-              >
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {cleanContent}
               </ReactMarkdown>
             </div>
           ) : (
-            isStreaming ? '' : <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No response</span>
+            isStreaming ? '' : <span className="italic text-fg-400">No response</span>
           )}
           {isStreaming && (
-            <span style={{
-              display: 'inline-block', width: '2px', height: '14px',
-              backgroundColor: 'var(--accent-color)', marginLeft: '4px',
-              animation: 'blink 1s step-end infinite', verticalAlign: 'middle'
-            }} />
+            <span
+              className="ml-1 inline-block h-[14px] w-[2px] align-middle bg-amber-400"
+              style={{ animation: 'blink 1s step-end infinite' }}
+            />
           )}
         </div>
 
         {inlineChartData && inlineChartData.length > 0 && (
-          <div style={{ marginTop: '16px' }}>
+          <div className="mt-4">
             <FinancialChart title={inlineChartTitle} data={inlineChartData} />
           </div>
         )}
 
         {sources && sources.length > 0 && (
-          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="mt-3 flex flex-wrap gap-2">
             {sources.map((s, i) => (
-              <div key={i} style={{
-                padding: '4px 10px', borderRadius: '16px', fontSize: '11px', fontWeight: '500',
-                backgroundColor: 'rgba(0, 200, 100, 0.08)', border: '1px solid rgba(0, 200, 100, 0.2)',
-                color: '#4ade80', display: 'flex', alignItems: 'center', gap: '4px'
-              }}>
-                <ExternalLink size={10} />
+              <Badge key={i} tone="ledger" pill mono>
+                <ExternalLink size={10} aria-hidden="true" />
                 {s.ticker} {s.year} {s.section || s.chunk_type}
-              </div>
+              </Badge>
             ))}
           </div>
         )}

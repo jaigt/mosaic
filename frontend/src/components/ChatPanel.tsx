@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Upload, Sparkles, Trash2, X, FileText, Square } from 'lucide-react';
+import { Send, Upload, Trash2, X, FileText, Square, LineChart } from 'lucide-react';
 import Message from './Message';
 import AgentState, { AgentStep } from './AgentState';
 import { streamChat, Source, FilingInfo } from '../api';
+import { Button, Badge, Textarea, Card } from './ui';
 
 interface ChatMessage {
   id: string;
@@ -166,106 +167,71 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
   };
 
   return (
-    <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column',
-      backgroundColor: 'var(--bg-primary)',
-      border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden'
-    }}>
-      <header style={{
-        padding: '12px 20px', borderBottom: '1px solid var(--border-color)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        minHeight: '60px', minWidth: 0, gap: '8px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, overflow: 'hidden' }}>
-          <Sparkles size={18} style={{ color: 'var(--accent-color)' }} />
-          <div style={{ minWidth: 0, overflow: 'hidden' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: 'bold', lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>AI Analyst Chat</h2>
+    <Card elevated className="flex flex-1 flex-col bg-ink-900/70">
+      <header className="flex min-h-[60px] min-w-0 items-center justify-between gap-2 border-b border-line px-5 py-3">
+        <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-amber-400/25 bg-amber-400/10">
+            <LineChart size={17} className="text-amber-400" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 overflow-hidden">
+            <h2 className="truncate font-display text-[15px] font-semibold leading-tight text-paper-100">
+              Analyst Desk
+            </h2>
             {activeFiling ? (
-              <div style={{ 
-                display: 'flex', alignItems: 'center', gap: '4px', 
-                backgroundColor: 'rgba(0, 123, 255, 0.1)', border: '1px solid rgba(0, 123, 255, 0.2)',
-                padding: '2px 8px', borderRadius: '4px', marginTop: '2px'
-              }}>
-                <FileText size={10} style={{ color: 'var(--accent-color)' }} />
-                <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--accent-color)' }}>
-                  {activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}
-                </span>
-                <X 
-                  size={10} 
-                  style={{ cursor: 'pointer', color: 'var(--accent-color)', marginLeft: '2px' }} 
+              <Badge tone="amber" mono className="mt-1 max-w-full">
+                <FileText size={10} aria-hidden="true" />
+                <span className="truncate">{activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}</span>
+                <button
+                  type="button"
                   onClick={onClearFiling}
-                />
-              </div>
+                  aria-label="Clear filing focus"
+                  className="ml-0.5 grid place-items-center rounded-sm hover:text-amber-200"
+                >
+                  <X size={11} />
+                </button>
+              </Badge>
             ) : (
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Global Search Mode</div>
+              <div className="mt-0.5 text-[11px] font-mono uppercase tracking-wider text-fg-400">
+                Global Search Mode
+              </div>
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={onIngestClick}
-            style={{
-              padding: '6px 14px', borderRadius: '6px',
-              border: '1px solid var(--border-color)',
-              backgroundColor: 'transparent', color: 'var(--text-secondary)',
-              cursor: 'pointer', fontSize: '12px', fontWeight: '500'
-            }}
-          >
-            + Ingest Filing
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={onIngestClick}>
+            <Upload size={13} /> Ingest
+          </Button>
           {isStreaming && (
-            <button
-              onClick={handleStop}
-              title="Stop generating"
-              style={{
-                padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                backgroundColor: 'transparent', color: 'var(--text-secondary)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                fontSize: '12px'
-              }}
-            >
-              <Square size={13} />
-              Stop
-            </button>
+            <Button variant="danger" size="sm" onClick={handleStop} title="Stop generating">
+              <Square size={12} /> Stop
+            </Button>
           )}
           {messages.length > 0 && !isStreaming && (
-            <button
-              onClick={handleClear}
-              title="Clear conversation"
-              style={{
-                padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                backgroundColor: 'transparent', color: 'var(--text-secondary)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                fontSize: '12px'
-              }}
-            >
-              <Trash2 size={13} />
-              Clear
-            </button>
+            <Button variant="ghost" size="sm" onClick={handleClear} title="Clear conversation">
+              <Trash2 size={13} /> Clear
+            </Button>
           )}
         </div>
       </header>
 
-      <div ref={scrollContainerRef} style={{
-        flex: 1, overflowY: 'auto', padding: '20px',
-        display: 'flex', flexDirection: 'column', gap: '20px'
-      }}>
+      <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
         {messages.length === 0 && (
-          <div style={{
-            flex: 1, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-secondary)', textAlign: 'center', gap: '12px', padding: '40px'
-          }}>
-            <Sparkles size={32} style={{ opacity: 0.4 }} />
-            <div style={{ fontSize: '16px', fontWeight: '500' }}>
-              {activeFiling 
-                ? `Ask about ${activeFiling.ticker}'s ${activeFiling.filing_year} ${activeFiling.document_type}`
-                : 'Ask about SEC filings'}
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
+            <div className="relative grid h-16 w-16 place-items-center rounded-xl border border-line-strong bg-ink-800">
+              <LineChart size={28} className="text-amber-400/70" aria-hidden="true" />
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-ledger-400 shadow-[0_0_12px_2px_rgba(69,197,133,0.5)]" />
             </div>
-            <div style={{ fontSize: '13px', opacity: 0.7 }}>
-              {activeFiling 
-                ? 'Your queries are currently focused on this specific document.'
-                : 'First ingest a filing or select one from the sidebar, then ask questions.'}
+            <div className="max-w-sm">
+              <div className="font-display text-lg font-semibold text-paper-100">
+                {activeFiling
+                  ? `${activeFiling.ticker} · ${activeFiling.filing_year} ${activeFiling.document_type}`
+                  : 'Interrogate the filings'}
+              </div>
+              <p className="mt-2 text-[13px] leading-relaxed text-fg-300">
+                {activeFiling
+                  ? 'Your queries are focused on this document. Ask about margins, risk factors, or guidance.'
+                  : 'Ingest a filing or pick one from the sidebar, then ask about financials, risk factors, and management discussion.'}
+              </p>
             </div>
           </div>
         )}
@@ -276,56 +242,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onIngestClick, o
         <div ref={messagesEndRef} />
       </div>
 
-      <div style={{
-        padding: '20px', borderTop: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-sidebar)'
-      }}>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <textarea
+      <div className="border-t border-line bg-ink-850/60 p-4">
+        <div className="relative">
+          <Textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeFiling ? `Search in ${activeFiling.ticker} ${activeFiling.filing_year}...` : "Ask about financials, risk factors... (Enter to send)"}
+            placeholder={activeFiling ? `Search in ${activeFiling.ticker} ${activeFiling.filing_year}...` : 'Ask about financials, risk factors... (Enter to send)'}
             disabled={isStreaming}
-            style={{
-              width: '100%', minHeight: '80px', maxHeight: '200px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)', borderRadius: '12px',
-              padding: '12px 16px', paddingRight: '120px',
-              color: 'var(--text-primary)', fontSize: '14px',
-              resize: 'none', outline: 'none', fontFamily: 'inherit',
-              opacity: isStreaming ? 0.6 : 1
-            }}
+            rows={3}
+            className="min-h-[84px] max-h-[200px] pr-32 text-sm leading-relaxed"
           />
-          <div style={{ position: 'absolute', right: '12px', bottom: '12px', display: 'flex', gap: '8px' }}>
-            <button
-              onClick={onIngestClick}
-              style={{
-                padding: '8px', borderRadius: '8px', border: 'none',
-                backgroundColor: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer'
-              }}
-              title="Ingest a filing"
-            >
-              <Upload size={18} />
-            </button>
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
-              style={{
-                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                backgroundColor: 'var(--accent-color)', color: 'white',
-                cursor: !input.trim() || isStreaming ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: '6px',
-                opacity: !input.trim() || isStreaming ? 0.5 : 1
-              }}
-            >
-              <Send size={16} />
-              <span style={{ fontSize: '14px', fontWeight: '500' }}>Send</span>
-            </button>
+          <div className="absolute bottom-3 right-3 flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={onIngestClick} title="Ingest a filing" aria-label="Ingest a filing">
+              <Upload size={17} />
+            </Button>
+            <Button variant="primary" size="md" onClick={handleSend} disabled={!input.trim() || isStreaming}>
+              <Send size={15} /> Send
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 };
 

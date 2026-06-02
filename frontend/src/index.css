@@ -1,17 +1,87 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   ValueRAG design tokens — "Ledger Terminal"
+   A finance/terminal-leaning dark aesthetic: deep ink backgrounds, warm amber
+   ticker accent, ledger-green for positive signals, and an editorial serif for
+   display. Tokens are exposed to Tailwind via @theme so utilities like
+   `bg-ink-800`, `text-amber-400`, `font-display` work, and the same values are
+   mirrored to legacy CSS variables for any inline styles still in use.
+   ========================================================================== */
+@theme {
+  /* Typography ------------------------------------------------------------ */
+  --font-display: "Fraunces", "Georgia", serif;
+  --font-serif: "Newsreader", "Georgia", serif;
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+
+  /* Ink / background scale (cool near-black, slight blue cast) ------------- */
+  --color-ink-950: #07090d;
+  --color-ink-900: #0a0d13;
+  --color-ink-850: #0d1118;
+  --color-ink-800: #11161f;
+  --color-ink-700: #161c27;
+  --color-ink-600: #1d2530;
+  --color-ink-500: #28323f;
+
+  /* Hairlines / borders --------------------------------------------------- */
+  --color-line-strong: #2b3543;
+  --color-line: #1f2733;
+  --color-line-soft: #161d27;
+
+  /* Text ------------------------------------------------------------------ */
+  --color-paper-100: #f4f1e9; /* warm near-white for headings */
+  --color-paper-200: #e7e3d8;
+  --color-fg-100: #e8ebf0;
+  --color-fg-200: #b8c0cc;
+  --color-fg-300: #8a94a3;
+  --color-fg-400: #5e6877;
+
+  /* Amber — the ticker accent (primary) ----------------------------------- */
+  --color-amber-300: #f3c969;
+  --color-amber-400: #e8a838;
+  --color-amber-500: #d4901f;
+  --color-amber-600: #a86f16;
+
+  /* Ledger green — positive / sources ------------------------------------- */
+  --color-ledger-300: #7fdca4;
+  --color-ledger-400: #45c585;
+  --color-ledger-500: #2da76d;
+  --color-ledger-600: #1d7a4f;
+
+  /* Signal colors --------------------------------------------------------- */
+  --color-crimson-400: #e8675f;
+  --color-crimson-500: #d4453c;
+  --color-azure-400: #5aa9e8;
+
+  /* Radii ----------------------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-xl: 18px;
+
+  /* Shadows --------------------------------------------------------------- */
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+    0 18px 40px -24px rgba(0, 0, 0, 0.8);
+  --shadow-glow-amber: 0 0 0 1px rgba(232, 168, 56, 0.25),
+    0 8px 24px -8px rgba(232, 168, 56, 0.35);
+}
+
+/* Legacy variable aliases — keep older inline styles rendering correctly. */
 :root {
-  --bg-primary: #0a0e14;
-  --bg-secondary: #1a1f26;
-  --bg-sidebar: #0f131a;
-  --text-primary: #e6e6e6;
-  --text-secondary: #a0a0a0;
-  --accent-color: #007bff;
-  --accent-hover: #0056b3;
-  --border-color: #2d333b;
-  --success-color: #28a745;
-  --error-color: #dc3545;
-  --warning-color: #ffc107;
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Courier New', monospace;
+  --bg-primary: var(--color-ink-900);
+  --bg-secondary: var(--color-ink-700);
+  --bg-sidebar: var(--color-ink-850);
+  --text-primary: var(--color-fg-100);
+  --text-secondary: var(--color-fg-300);
+  --accent-color: var(--color-amber-400);
+  --accent-hover: var(--color-amber-500);
+  --border-color: var(--color-line);
+  --success-color: var(--color-ledger-400);
+  --error-color: var(--color-crimson-500);
+  --warning-color: var(--color-amber-400);
+  --font-family: var(--font-sans);
   --sidebar-width: 280px;
   --panel-gap: 12px;
 }
@@ -22,10 +92,32 @@
   padding: 0;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: var(--font-family);
+  background-color: var(--color-ink-950);
+  /* Subtle ledger atmosphere: a faint amber glow top-left + a fine grid. */
+  background-image:
+    radial-gradient(
+      1200px 600px at 0% -10%,
+      rgba(232, 168, 56, 0.05),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at 100% 0%,
+      rgba(90, 169, 232, 0.035),
+      transparent 55%
+    ),
+    linear-gradient(transparent 95%, rgba(255, 255, 255, 0.015) 95%),
+    linear-gradient(90deg, transparent 95%, rgba(255, 255, 255, 0.015) 95%);
+  background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
+  background-attachment: fixed;
+  color: var(--color-fg-100);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" off;
   height: 100vh;
   overflow: hidden;
 }
@@ -35,86 +127,139 @@ body {
   display: flex;
 }
 
+/* Tabular figures for numeric / monospace contexts. */
+.tnum,
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
-
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
+  background: var(--color-ink-500);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-line-strong);
+  background-clip: padding-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+/* Accessible focus ring — used by primitives via :focus-visible. */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-amber-400);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+@keyframes vr-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes vr-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes vr-ticker {
+  0% { background-position: 0 0; }
+  100% { background-position: -200% 0; }
+}
 
-/* SEC filing table rendering (SourcePanel). Injected HTML is sanitized in JS;
-   these rules style the structural table tags. */
+.animate-spin { animation: spin 1s linear infinite; }
+.vr-rise { animation: vr-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Markdown surface tuning inside assistant messages. */
+.markdown-content > :last-child { margin-bottom: 0; }
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-paper-100);
+  letter-spacing: -0.01em;
+  margin: 18px 0 8px;
+  line-height: 1.25;
+}
+.markdown-content h1 { font-size: 1.35em; }
+.markdown-content h2 { font-size: 1.18em; }
+.markdown-content h3 { font-size: 1.05em; }
+.markdown-content strong { color: var(--color-paper-100); font-weight: 600; }
+.markdown-content blockquote {
+  border-left: 2px solid var(--color-amber-500);
+  padding-left: 14px;
+  margin: 12px 0;
+  color: var(--color-fg-200);
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+
+/* ============================================================================
+   SEC filing table rendering (SourcePanel). Injected HTML is sanitized in JS;
+   these rules style the structural table tags. (Ported from the original
+   index.css, re-pointed at the new token palette.)
+   ========================================================================== */
 .sec-table-container {
   padding: 16px;
-  background: #161b22;
-  border-radius: 8px;
-  border: 1px solid #30363d;
+  background: var(--color-ink-850);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-line);
   overflow-x: auto;
 }
 .sec-table-container table {
   border-collapse: collapse;
   width: 100%;
-  font-family: var(--font-family);
-  color: #c9d1d9;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-200);
   table-layout: auto;
+  font-size: 12.5px;
 }
 .sec-table-container td,
 .sec-table-container th {
   padding: 8px 12px;
-  border-bottom: 1px solid #30363d;
+  border-bottom: 1px solid var(--color-line);
   vertical-align: bottom;
 }
-/* First column: label column */
 .sec-table-container tr td:first-child,
 .sec-table-container tr th:first-child {
   text-align: left;
   white-space: normal;
   min-width: 160px;
-  color: #f0f6fc;
+  color: var(--color-paper-100);
   font-weight: 500;
+  font-family: var(--font-sans);
 }
-/* Data columns: right-align numbers */
 .sec-table-container tbody td {
   text-align: right;
   white-space: nowrap;
 }
-/* Header rows */
 .sec-table-container thead td,
 .sec-table-container thead th {
   text-align: center;
   font-weight: 600;
-  color: #8b949e;
-  border-bottom: 2px solid #30363d;
+  color: var(--color-fg-300);
+  border-bottom: 2px solid var(--color-line-strong);
   background: rgba(255, 255, 255, 0.02);
   white-space: nowrap;
 }
-/* Override first-child to stay left-aligned */
 .sec-table-container thead td:first-child,
 .sec-table-container thead th:first-child,
 .sec-table-container tbody td:first-child {
   text-align: left;
 }
-/* Collapse empty spacer cells — SEC filings use these between $ and value columns */
 .sec-table-container td:empty,
 .sec-table-container th:empty {
   width: 4px !important;
@@ -127,5 +272,5 @@ body {
   content: "";
 }
 .sec-table-container tbody tr:hover td {
-  background: rgba(56, 139, 253, 0.05);
+  background: rgba(232, 168, 56, 0.06);
 }

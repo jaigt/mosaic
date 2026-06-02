@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { LayoutDashboard, History, Settings, LogOut, Database, FileText, RefreshCw, Loader2 } from 'lucide-react';
+import { LayoutDashboard, History, Settings, LogOut, Database, FileText, RefreshCw } from 'lucide-react';
 import { listFilings, FilingInfo, ingestFiling, getIngestStatus } from '../api';
+import { Button, Spinner, cn } from './ui';
 
 interface SidebarProps {
   onIngestClick: () => void;
@@ -39,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onIngestClick, activeFiling, onSelect
     try {
       const resp = await ingestFiling(f.ticker, f.document_type, f.filing_year);
       setReingesting(resp.task_id);
-      
+
       // Start polling
       const poll = async () => {
         try {
@@ -62,132 +63,110 @@ const Sidebar: React.FC<SidebarProps> = ({ onIngestClick, activeFiling, onSelect
   };
 
   return (
-    <div style={{
-      width: 'var(--sidebar-width)',
-      backgroundColor: 'var(--bg-sidebar)',
-      borderRight: '1px solid var(--border-color)',
-      display: 'flex', flexDirection: 'column', padding: '24px 0',
-      overflow: 'hidden'
-    }}>
-      <div style={{ padding: '0 24px 24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ 
-          width: '32px', height: '32px', 
-          backgroundColor: 'var(--accent-color)', 
-          borderRadius: '8px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(0, 123, 255, 0.3)'
-        }}>
-          <Database size={18} color="white" />
+    <aside className="flex w-[var(--sidebar-width)] flex-col overflow-hidden border-r border-line bg-ink-900/60 py-6 backdrop-blur-sm">
+      <div className="flex items-center gap-3 px-6 pb-6">
+        <div className="grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-amber-300 to-amber-500 shadow-[0_4px_16px_-4px_rgba(232,168,56,0.55)]">
+          <Database size={18} className="text-ink-950" />
         </div>
-        <h1 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>ValueRAG</h1>
+        <div className="leading-none">
+          <h1 className="font-display text-[19px] font-semibold tracking-tight text-paper-100">ValueRAG</h1>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-fg-400">Filing Analyst</span>
+        </div>
       </div>
 
-      <div style={{ padding: '0 16px 20px' }}>
-        <button
-          onClick={onIngestClick}
-          style={{
-            width: '100%', padding: '12px',
-            backgroundColor: 'var(--accent-color)', color: 'white',
-            border: 'none', borderRadius: '10px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: '8px', fontWeight: '600', fontSize: '14px',
-            transition: 'transform 0.1s, background-color 0.2s'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--accent-hover)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--accent-color)'}
-        >
+      <div className="px-4 pb-5">
+        <Button variant="primary" size="lg" onClick={onIngestClick} className="w-full">
           <Database size={16} />
           Ingest New Filing
-        </button>
+        </Button>
       </div>
 
-      <nav style={{ flex: 1, padding: '0 16px', overflowY: 'auto' }}>
-        <div style={{ 
-          fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', 
-          textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0 12px 12px'
-        }}>
-          Main Menu
-        </div>
-        <NavItem icon={<LayoutDashboard size={18} />} label="Analysis Lab" active />
-        <NavItem icon={<History size={18} />} label="Query History" />
-        
-        <div style={{ 
-          fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', 
-          textTransform: 'uppercase', letterSpacing: '0.05em', padding: '24px 12px 12px'
-        }}>
-          Ingested Filings
-        </div>
+      <nav className="flex-1 overflow-y-auto px-4">
+        <SectionLabel>Workspace</SectionLabel>
+        <NavItem icon={<LayoutDashboard size={17} />} label="Analysis Lab" active />
+        <NavItem icon={<History size={17} />} label="Query History" />
+
+        <SectionLabel className="pt-6">Ingested Filings</SectionLabel>
         {loading && filings.length === 0 ? (
-          <div style={{ padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-            Loading filings...
-          </div>
+          <div className="px-3 py-2 text-xs italic text-fg-400">Loading filings...</div>
         ) : filings.length === 0 ? (
-          <div style={{ padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.6 }}>
-            No filings ingested yet.
-          </div>
+          <div className="px-3 py-2 text-xs text-fg-400/70">No filings ingested yet.</div>
         ) : (
           filings.map((f) => {
             const taskId = `${f.ticker}-${f.document_type}-${f.filing_year}`;
-            const isActive = activeFiling?.ticker === f.ticker &&
-                             activeFiling?.filing_year === f.filing_year &&
-                             activeFiling?.document_type === f.document_type;
+            const isActive =
+              activeFiling?.ticker === f.ticker &&
+              activeFiling?.filing_year === f.filing_year &&
+              activeFiling?.document_type === f.document_type;
             const isReingesting = reingesting === taskId;
 
             return (
-              <div key={taskId}
+              <div
+                key={taskId}
                 onClick={() => onSelectFiling(f)}
-                style={{
-                  padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  transition: 'background-color 0.2s', marginBottom: '2px',
-                  backgroundColor: isActive ? 'rgba(0, 123, 255, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(0, 123, 255, 0.3)' : '1px solid transparent',
-                  position: 'relative'
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectFiling(f);
+                  }
                 }}
-                onMouseEnter={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)')}
-                onMouseLeave={(e) => !isActive && (e.currentTarget.style.backgroundColor = 'transparent')}
+                className={cn(
+                  'group mb-0.5 flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 transition-colors',
+                  isActive
+                    ? 'border-amber-400/30 bg-amber-400/10'
+                    : 'border-transparent hover:bg-white/[0.03]',
+                )}
               >
-                <FileText size={16} style={{ color: isActive ? 'var(--accent-color)' : 'var(--text-secondary)', opacity: 0.8 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{f.ticker}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{f.filing_year} {f.document_type} • {f.chunks} chunks</div>
+                <FileText
+                  size={15}
+                  className={cn('shrink-0', isActive ? 'text-amber-400' : 'text-fg-400')}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-[13px] font-semibold tracking-wide text-fg-100">{f.ticker}</div>
+                  <div className="truncate text-[11px] text-fg-400">
+                    {f.filing_year} {f.document_type} · {f.chunks} chunks
+                  </div>
                 </div>
-                
+
                 <button
+                  type="button"
                   onClick={(e) => handleReingest(e, f)}
                   disabled={isReingesting}
-                  title="Re-ingest/Refresh"
-                  style={{
-                    padding: '6px', borderRadius: '4px', border: 'none',
-                    backgroundColor: 'transparent', color: 'var(--text-secondary)',
-                    cursor: isReingesting ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                  {isReingesting ? (
-                    <Loader2 size={14} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
-                  ) : (
-                    <RefreshCw size={14} />
+                  title="Re-ingest / refresh"
+                  aria-label={`Re-ingest ${f.ticker} ${f.filing_year} ${f.document_type}`}
+                  className={cn(
+                    'grid h-7 w-7 shrink-0 place-items-center rounded text-fg-400 transition-colors',
+                    isReingesting
+                      ? 'cursor-not-allowed'
+                      : 'opacity-0 hover:bg-white/10 hover:text-fg-100 focus-visible:opacity-100 group-hover:opacity-100',
                   )}
+                >
+                  {isReingesting ? <Spinner size={14} /> : <RefreshCw size={14} />}
                 </button>
-                
-                {isActive && <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: 'var(--accent-color)', marginLeft: '4px' }} />}
+
+                {isActive && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden="true" />}
               </div>
             );
           })
         )}
       </nav>
 
-      <div style={{ padding: '16px', borderTop: '1px solid var(--border-color)', marginTop: 'auto' }}>
-        <NavItem icon={<Settings size={18} />} label="Settings" />
-        <NavItem icon={<LogOut size={18} />} label="Sign Out" />
+      <div className="mt-auto border-t border-line px-4 pt-4">
+        <NavItem icon={<Settings size={17} />} label="Settings" />
+        <NavItem icon={<LogOut size={17} />} label="Sign Out" />
       </div>
-    </div>
+    </aside>
   );
 };
+
+const SectionLabel: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <div className={cn('px-3 pb-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-400', className)}>
+    {children}
+  </div>
+);
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -197,22 +176,19 @@ interface NavItemProps {
 }
 
 const NavItem: React.FC<NavItemProps> = ({ icon, label, active, onClick }) => (
-  <div
+  <button
+    type="button"
     onClick={onClick}
-    style={{
-      display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
-      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-      backgroundColor: active ? 'rgba(0, 123, 255, 0.1)' : 'transparent',
-      borderLeft: active ? '3px solid var(--accent-color)' : '3px solid transparent',
-      borderRadius: '4px', cursor: onClick || active ? 'pointer' : 'default',
-      marginBottom: '4px', transition: 'all 0.2s'
-    }}
-    onMouseEnter={(e) => !active && (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)')}
-    onMouseLeave={(e) => !active && (e.currentTarget.style.backgroundColor = 'transparent')}
+    className={cn(
+      'mb-1 flex w-full items-center gap-3 rounded-md border-l-2 px-3 py-2.5 text-left text-sm transition-colors',
+      active
+        ? 'border-amber-400 bg-amber-400/10 font-semibold text-paper-100'
+        : 'border-transparent font-medium text-fg-300 hover:bg-white/[0.03] hover:text-fg-100',
+    )}
   >
-    <span style={{ color: active ? 'var(--accent-color)' : 'inherit' }}>{icon}</span>
-    <span style={{ fontSize: '14px', fontWeight: active ? '600' : '500' }}>{label}</span>
-  </div>
+    <span className={active ? 'text-amber-400' : 'text-fg-400'}>{icon}</span>
+    {label}
+  </button>
 );
 
 export default Sidebar;

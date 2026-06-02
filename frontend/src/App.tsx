@@ -4,6 +4,7 @@ import ChatPanel from './components/ChatPanel';
 import SourcePanel from './components/SourcePanel';
 import IngestModal from './components/IngestModal';
 import { Source, FilingInfo } from './api';
+import { cn } from './components/ui';
 import './index.css';
 
 const App: React.FC = () => {
@@ -22,34 +23,29 @@ const App: React.FC = () => {
     const sidebarWidth = 280;
     const containerWidth = window.innerWidth - sidebarWidth;
     const newLeftWidth = ((clientX - sidebarWidth) / containerWidth) * 100;
-    
+
     if (newLeftWidth > 2 && newLeftWidth < 98) setLeftWidth(newLeftWidth);
   };
 
   return (
     <div
-      className="app-container"
+      className={cn(
+        'flex h-screen w-screen overflow-hidden',
+        isResizing ? 'cursor-col-resize select-none' : 'cursor-default',
+      )}
       onMouseMove={onResize}
       onMouseUp={stopResizing}
       onMouseLeave={stopResizing}
       onTouchMove={onResize}
       onTouchEnd={stopResizing}
-      style={{
-        display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden',
-        cursor: isResizing ? 'col-resize' : 'default',
-        userSelect: isResizing ? 'none' : 'auto'
-      }}
     >
-      <Sidebar 
-        onIngestClick={() => setIngestOpen(true)} 
+      <Sidebar
+        onIngestClick={() => setIngestOpen(true)}
         activeFiling={activeFiling}
         onSelectFiling={setActiveFiling}
       />
-      <main style={{
-        display: 'flex', flex: 1, padding: '12px', gap: '8px',
-        backgroundColor: 'var(--bg-primary)'
-      }}>
-        <div style={{ width: `${leftWidth}%`, display: 'flex', minWidth: 0, overflow: 'hidden' }}>
+      <main className="flex flex-1 gap-2 p-3">
+        <div className="flex min-w-0 overflow-hidden" style={{ width: `${leftWidth}%` }}>
           <ChatPanel
             onSourcesUpdate={setSources}
             onIngestClick={() => setIngestOpen(true)}
@@ -60,21 +56,25 @@ const App: React.FC = () => {
         </div>
 
         <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panels"
           onMouseDown={startResizing}
           onTouchStart={startResizing}
-          style={{
-            width: '4px', cursor: 'col-resize',
-            backgroundColor: isResizing ? 'var(--accent-color)' : 'var(--border-color)',
-            borderRadius: '2px', transition: 'background-color 0.2s', margin: '0 4px'
-          }}
-        />
+          className={cn(
+            'group relative mx-1 w-1 shrink-0 cursor-col-resize rounded-full transition-colors',
+            isResizing ? 'bg-amber-400' : 'bg-line hover:bg-line-strong',
+          )}
+        >
+          <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
+        </div>
 
-        <div style={{ flex: 1, display: 'flex', minWidth: 0, overflow: 'hidden' }}>
+        <div className="flex flex-1 min-w-0 overflow-hidden">
           <SourcePanel sources={sources} />
         </div>
       </main>
 
-      {ingestOpen && <IngestModal onClose={() => setIngestOpen(false)} />}
+      <IngestModal open={ingestOpen} onClose={() => setIngestOpen(false)} />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { FileText, Download, Maximize2, Search, Info } from 'lucide-react';
 import { Source } from '../api';
+import { Badge, Card, cn } from './ui';
 
 interface SourcePanelProps {
   sources: Source[];
@@ -27,69 +28,58 @@ const SourcePanel: React.FC<SourcePanelProps> = ({ sources }) => {
   const activeSource = hasRealSources ? sources[activeIdx] : null;
 
   return (
-    <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column',
-      backgroundColor: 'var(--bg-sidebar)', border: '1px solid var(--border-color)',
-      borderRadius: '12px', overflow: 'hidden'
-    }}>
-      <header style={{
-        padding: '0 12px', borderBottom: '1px solid var(--border-color)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        backgroundColor: 'var(--bg-sidebar)', height: '48px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '2px', overflowX: 'auto', flex: 1 }}>
-          {hasRealSources ? sources.map((s, i) => (
-            <Tab
-              key={i}
-              label={`Source ${i + 1}`}
-              sublabel={`${s.ticker} ${s.year}`}
-              active={i === activeIdx}
-              onClick={() => setActiveIdx(i)}
-            />
-          )) : (
+    <Card elevated className="flex flex-1 flex-col bg-ink-900/70">
+      <header className="flex h-12 items-center justify-between border-b border-line pl-1 pr-3">
+        <div className="flex h-full flex-1 items-center gap-1 overflow-x-auto">
+          {hasRealSources ? (
+            sources.map((s, i) => (
+              <Tab
+                key={i}
+                label={`Source ${i + 1}`}
+                sublabel={`${s.ticker} ${s.year}`}
+                active={i === activeIdx}
+                onClick={() => setActiveIdx(i)}
+              />
+            ))
+          ) : (
             <Tab label="Source Viewer" active />
           )}
         </div>
-        <div style={{ display: 'flex', gap: '12px', color: 'var(--text-secondary)', flexShrink: 0, marginLeft: '12px' }}>
-          <Search size={16} style={{ cursor: 'pointer' }} />
-          <Download size={16} style={{ cursor: 'pointer' }} />
-          <Maximize2 size={16} style={{ cursor: 'pointer' }} />
+        <div className="ml-3 flex shrink-0 items-center gap-1 text-fg-400">
+          {[Search, Download, Maximize2].map((Icon, i) => (
+            <button
+              key={i}
+              type="button"
+              className="grid h-7 w-7 place-items-center rounded text-fg-400 transition-colors hover:bg-white/5 hover:text-fg-200"
+              aria-label={['Search source', 'Download source', 'Expand source'][i]}
+            >
+              <Icon size={15} />
+            </button>
+          ))}
         </div>
       </header>
 
-      <div style={{
-        flex: 1, overflowY: 'auto', padding: '0',
-        backgroundColor: '#0d1117', color: '#c9d1d9'
-      }}>
+      <div className="flex-1 overflow-y-auto bg-ink-950/40 text-fg-200">
         {!hasRealSources ? (
           <EmptyState />
         ) : activeSource ? (
           <SourceChunkView source={activeSource} index={activeIdx} total={sources.length} />
         ) : null}
       </div>
-    </div>
+    </Card>
   );
 };
 
 const EmptyState: React.FC = () => (
-  <div style={{
-    maxWidth: '800px', margin: '0 auto',
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', height: '100%', gap: '20px',
-    color: 'var(--text-secondary)', textAlign: 'center', padding: '40px'
-  }}>
-    <div style={{ 
-      width: '64px', height: '64px', borderRadius: '16px', 
-      backgroundColor: 'var(--bg-secondary)', display: 'flex', 
-      alignItems: 'center', justifyContent: 'center', opacity: 0.5
-    }}>
-      <FileText size={32} />
+  <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-5 p-10 text-center">
+    <div className="grid h-16 w-16 place-items-center rounded-xl border border-line-strong bg-ink-800 text-fg-400">
+      <FileText size={30} />
     </div>
     <div>
-      <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>No sources selected</div>
-      <div style={{ fontSize: '14px', maxWidth: '300px', margin: '0 auto', opacity: 0.7 }}>
-        Retrieved SEC excerpts and tables will be displayed here for verification.
-      </div>
+      <div className="font-display text-lg font-semibold text-paper-100">No sources selected</div>
+      <p className="mx-auto mt-2 max-w-xs text-[13px] leading-relaxed text-fg-400">
+        Retrieved SEC excerpts and tables will appear here for verification, side by side with the analyst's answer.
+      </p>
     </div>
   </div>
 );
@@ -101,93 +91,69 @@ interface SourceChunkViewProps {
 }
 
 const SourceChunkView: React.FC<SourceChunkViewProps> = ({ source, index, total }) => (
-  <div style={{ maxWidth: '900px', margin: '0 auto', padding: '40px' }}>
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-      marginBottom: '32px', paddingBottom: '24px', borderBottom: '1px solid #30363d'
-    }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <span style={{ 
-            padding: '2px 8px', borderRadius: '4px', backgroundColor: 'var(--accent-color)', 
-            color: 'white', fontSize: '11px', fontWeight: '700' 
-          }}>
-            {source.ticker}
-          </span>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            {source.year} {source.quarter && source.quarter !== 'FY' ? ` ${source.quarter}` : ''} • {source.chunk_type.toUpperCase()}
+  <div className="vr-rise mx-auto max-w-3xl p-10">
+    <div className="mb-8 flex items-start justify-between gap-4 border-b border-line pb-6">
+      <div className="min-w-0">
+        <div className="mb-2 flex items-center gap-2">
+          <Badge tone="amber" mono>{source.ticker}</Badge>
+          <span className="font-mono text-[12px] uppercase tracking-wider text-fg-400">
+            {source.year}{source.quarter && source.quarter !== 'FY' ? ` ${source.quarter}` : ''} · {source.chunk_type}
           </span>
         </div>
-        <h2 style={{ fontSize: '24px', fontWeight: '700', margin: '0', color: '#f0f6fc' }}>
-          {source.section}
-        </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px', color: '#8b949e' }}>
-          <Info size={14} />
-          Relevance Score: {(1 / (1 + source.score)).toFixed(4)}
+        <h2 className="font-display text-2xl font-semibold leading-tight text-paper-100">{source.section}</h2>
+        <div className="mt-2.5 flex items-center gap-1.5 text-[12px] text-fg-400">
+          <Info size={13} />
+          Relevance score {(1 / (1 + source.score)).toFixed(4)}
         </div>
       </div>
-      <div style={{ fontSize: '12px', color: '#8b949e', fontWeight: '500' }}>
-        DOC {index + 1} OF {total}
-      </div>
+      <Badge tone="neutral" mono className="shrink-0">
+        Doc {index + 1} / {total}
+      </Badge>
     </div>
 
     {source.chunk_type === 'table' ? (
-      <div className="source-content">
-        {/* LLM summary */}
+      <div>
         {source.text_content && (
-          <div style={{
-            marginBottom: '24px', padding: '16px 20px',
-            backgroundColor: 'rgba(56, 139, 253, 0.1)', borderLeft: '4px solid #388bfd',
-            borderRadius: '6px', fontSize: '14px', lineHeight: '1.6', color: '#adbac7'
-          }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#58a6ff', marginBottom: '8px' }}>
-              CONTEXTUAL SUMMARY
+          <div className="mb-6 rounded-md border-l-2 border-amber-500 bg-amber-400/[0.07] px-5 py-4">
+            <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">
+              Contextual Summary
             </div>
-            {source.text_content}
+            <p className="text-[14px] leading-relaxed text-fg-200">{source.text_content}</p>
           </div>
         )}
         {/* Rendered HTML table — sanitized; styling lives in index.css */}
         <div
           className="sec-table-container"
-          style={{ overflowX: 'auto', fontSize: '13px' }}
           dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(source.raw_payload, TABLE_SANITIZE) }}
         />
       </div>
     ) : (
-      <div style={{ 
-        fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-wrap', 
-        wordBreak: 'break-word', color: '#adbac7', fontFamily: 'serif' 
-      }}>
+      <div className="whitespace-pre-wrap break-words font-serif text-[16.5px] leading-[1.85] text-fg-200">
         {source.raw_payload}
       </div>
     )}
   </div>
 );
 
-const Tab: React.FC<{ label: string; sublabel?: string; active?: boolean; onClick?: () => void }> = ({ label, sublabel, active, onClick }) => (
-  <div
+const Tab: React.FC<{ label: string; sublabel?: string; active?: boolean; onClick?: () => void }> = ({
+  label,
+  sublabel,
+  active,
+  onClick,
+}) => (
+  <button
+    type="button"
     onClick={onClick}
-    style={{
-      padding: '0 16px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center',
-      minWidth: '120px', cursor: onClick ? 'pointer' : 'default',
-      backgroundColor: active ? '#0d1117' : 'transparent',
-      borderBottom: active ? '2px solid var(--accent-color)' : 'none',
-      borderRight: '1px solid var(--border-color)',
-      transition: 'background-color 0.2s'
-    }}
-  >
-    <div style={{ 
-      fontSize: '12px', fontWeight: '600', 
-      color: active ? 'var(--text-primary)' : 'var(--text-secondary)' 
-    }}>
-      {label}
-    </div>
-    {sublabel && (
-      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', opacity: 0.6 }}>
-        {sublabel}
-      </div>
+    disabled={!onClick}
+    className={cn(
+      'flex h-full min-w-[120px] flex-col justify-center border-b-2 border-r border-r-line px-4 text-left transition-colors',
+      active ? 'border-b-amber-400 bg-ink-950/40' : 'border-b-transparent hover:bg-white/[0.02]',
+      onClick ? 'cursor-pointer' : 'cursor-default',
     )}
-  </div>
+  >
+    <span className={cn('text-[12px] font-semibold', active ? 'text-fg-100' : 'text-fg-400')}>{label}</span>
+    {sublabel && <span className="font-mono text-[10px] text-fg-400/70">{sublabel}</span>}
+  </button>
 );
 
 export default SourcePanel;
