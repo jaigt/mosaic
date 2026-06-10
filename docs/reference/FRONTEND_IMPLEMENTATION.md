@@ -71,23 +71,45 @@ To handle long SEC processing times, ingestion is asynchronous:
 3. **Polling:** Frontend `IngestModal` or `Sidebar` polls `GET /api/ingest/status/{task_id}` every 2.5s.
 4. **Completion:** When status is `completed`, the UI updates the chunk count and refreshes the filings list.
 
-## 5. Visual Identity — "Ledger Terminal" tokens (`@theme` in `src/index.css`)
+## 5. Visual Identity — "The Analyst's Study" tokens (`@theme` in `src/index.css`)
 
-Design tokens are defined once in the `@theme` block and consumed as Tailwind
-utility classes (e.g. `bg-ink-900`, `text-fg-100`, `border-line`, `text-amber-400`).
+An engraved-ledger aesthetic: deep racing-green ink surfaces, ivory type,
+brass-gold "foil" accents, and a signature paper-document treatment for
+retrieved sources. Design tokens are defined once in the `@theme` block and
+consumed as Tailwind utilities (e.g. `bg-ink-900`, `text-fg-100`,
+`border-line`, `text-amber-400`). **Token *names* are semantic and stable** —
+`amber-*` is "the accent", `ink-*` is "the surface scale" — so retheming means
+changing values in `index.css` only.
 
 | Token family | Examples | Use |
 |---|---|---|
-| `ink-*` (950→500) | `#07090d`→`#28323f` | Backgrounds / surfaces (deep cool near-black) |
-| `line*` | `line`, `line-strong`, `line-soft` | Dividers / borders |
-| `paper-*` / `fg-*` | `#f4f1e9`, `#e8ebf0`→`#5e6877` | Headings / body / muted text |
-| `amber-*` (300→600) | `#f3c969`→`#a86f16` | Primary accent (tickers, highlights) |
-| `ledger-*` | `#7fdca4`→`#1d7a4f` | Positive / source signals (green) |
-| `crimson-*` / `azure-*` | `#e8675f`, `#5aa9e8` | Negative / info signals |
+| `ink-*` (950→500) | `#090e0b`→`#2b4030` | Backgrounds / surfaces (deep racing-green ink) |
+| `line*` | `line`, `line-strong`, `line-soft` | Hairlines / borders (certificate rules) |
+| `paper-*` / `fg-*` | `#f1ecdc`, `#e9e6d7`→`#66745f` | Headings / body / muted text (ivory) |
+| `amber-*` (200→600) | `#f1e2ae`→`#8a6c27` | Brass-gold accent (foil buttons, tickers, seals) |
+| `ledger-*` | `#99dfb0`→`#25754c` | Positive / source signals (mint) |
+| `crimson-*` / `azure-*` | `#dd7158`, `#6fa6cf` | Negative / info signals (oxblood / steel) |
+| `--paper-*` (`:root` vars) | `--paper-bg #f3eedf`, `--paper-ink #232a22` | The light "paper document" palette used by `.vr-paper` |
 
-Fonts (loaded in `index.html`): **Fraunces** (display), **Newsreader** (filing prose),
-**IBM Plex Sans** (UI), **IBM Plex Mono** (tickers/figures). Legacy `--bg-*`/`--accent-*`
-variables are aliased to the new palette for backward compatibility.
+Fonts (loaded in `index.html`): **Gloock** (didone display — headlines, seals),
+**Newsreader** (filing prose + editorial italics), **Hanken Grotesk** (UI),
+**Spline Sans Mono** (tickers/figures, tabular-nums). Legacy `--bg-*`/`--accent-*`
+variables are aliased to the palette for backward compatibility.
+
+Signature pieces (all in `index.css`):
+- **`.vr-paper`** — sources render as ivory paper sheets ("exhibits") inside the
+  dark UI; `.vr-paper .sec-table-container` flips the SEC table styles to a
+  print palette. Used by `SourcePanel`'s `SourceChunkView`.
+- **`.vr-foil`** — gold-foil gradient + hover sheen sweep; `Button[variant=primary]`.
+- **`.vr-rule-b` / `.vr-rule-t`** — double hairline rules (certificate borders)
+  for panel headers/footers.
+- **`.vr-leader`** — dotted ledger leaders (`AAPL ····· 2026 10-Q`) in the sidebar.
+- Body background layers grain + guilloche arcs + lamp-glow vignette.
+
+> ⚠️ **Do not add an un-layered `* { margin:0; padding:0 }` reset.** Tailwind v4
+> emits utilities inside `@layer utilities`; un-layered author CSS out-cascades
+> every layer, silently zeroing all spacing utilities app-wide (this bug shipped
+> once — removed 2026-06-09). Preflight already handles resets.
 
 ## 6. SEC Table Rendering
 

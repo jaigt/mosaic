@@ -1,10 +1,14 @@
 """
 Provider-agnostic embedding layer.
-  text-embedding-004, embedding-* → Google (768-dim)
-  text-embedding-3-*              → OpenAI (1536-dim for -small, 3072 for -large)
+  gemini-embedding-*  → Google (3072-dim, supports task_type)
+  text-embedding-3-*  → OpenAI (1536-dim for -small, 3072 for -large)
 
 Note: Anthropic has no embedding API.
-POC Decision: Defaults to text-embedding-004 via Google AI Studio free tier.
+POC Decision: Defaults to gemini-embedding-001 via Google AI Studio free tier.
+
+EMBEDDING_DIM is baked into the LanceDB schema at table creation, so changing
+the embedding model requires a new table + re-ingest (see store.get_table,
+which validates the dimension of an existing table against this module).
 """
 import logging
 import time
@@ -14,16 +18,26 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Dimensions by model
+# Dimensions by model. Models must be listed here explicitly — silently
+# defaulting an unknown model's dimension previously let a stale .env value
+# (text-embedding-004 → 768) disagree with a 3072-dim LanceDB table.
 _DIMS = {
     "gemini-embedding-001": 3072,
-    "gemini-embedding-2-preview": 3072,
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
+    # Legacy Google model (deprecated upstream); kept for old tables only.
+    "text-embedding-004": 768,
 }
 
 def _get_dim(model: str) -> int:
-    return _DIMS.get(model, 768)
+    try:
+        return _DIMS[model]
+    except KeyError:
+        raise ValueError(
+            f"Unknown embedding model '{model}': its vector dimension is not "
+            f"registered. Add it to _DIMS in backend/pipeline/embedder.py. "
+            f"Known models: {sorted(_DIMS)}"
+        ) from None
 
 EMBEDDING_DIM = _get_dim(settings.embedding_model)
 

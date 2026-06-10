@@ -170,6 +170,53 @@ def test_producer_stops_when_client_disconnects(monkeypatch):
         assert payload["type"] in ("status", "chunk", "sources", "done", "error")
 
 
+def test_synthesis_error_is_surfaced_to_client(monkeypatch):
+    """An exception inside the synthesis producer (bad API key, retired model,
+    provider outage) must reach the client as an SSE error event — not end the
+    stream silently with an empty answer."""
+    monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])
+
+    def broken_stream_generate(prompt, model):
+        raise RuntimeError("GOOGLE_API_KEY invalid")
+        yield  # pragma: no cover — make it a generator
+
+    monkeypatch.setattr(main, "stream_generate", broken_stream_generate)
+
+    class FakeRequest:
+        async def is_disconnected(self):
+            return False
+
+    async def drive():
+        events = []
+        async for ev in main._chat_stream(ChatRequest(message="hi"), FakeRequest()):
+            events.append(json.loads(ev[len("data: "):].strip()))
+        return events
+
+    events = asyncio.run(drive())
+    types = [e["type"] for e in events]
+    assert "error" in types
+    error_data = next(e["data"] for e in events if e["type"] == "error")
+    assert "GOOGLE_API_KEY invalid" in error_data
+    assert types[-1] == "done"
+
+
+def test_table_payload_truncates_on_row_boundary():
+    row = "<tr><td>Revenue</td><td>$394,328</td></tr>"
+    payload = "<table>" + row * 200 + "</table>"
+    out = main._truncate_payload(payload, "table", limit=2000)
+    assert len(out) <= 2000
+    assert out.endswith("</tr>")  # never cut mid-row
+
+
+def test_text_payload_truncates_plainly():
+    payload = "x" * 5000
+    assert main._truncate_payload(payload, "text", limit=2000) == "x" * 2000
+
+
+def test_short_payload_untouched():
+    assert main._truncate_payload("short", "table") == "short"
+
+
 def test_chat_stream_happy_path_shape(monkeypatch):
     monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])
 

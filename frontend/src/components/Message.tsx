@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { User, Bot, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import FinancialChart from './Visualizer/FinancialChart';
@@ -18,6 +18,10 @@ interface MessageProps {
   citations?: Citation[];
   sources?: Source[];
   isStreaming?: boolean;
+  /** Clicking a source pill focuses that source in the SourcePanel.
+   *  Kept as a (sources, index) signature so the same stable handler can be
+   *  shared across messages without breaking React.memo. */
+  onCitationClick?: (sources: Source[], index: number) => void;
 }
 
 // Hoisted to module scope: this object captures nothing dynamic, so re-creating
@@ -55,7 +59,7 @@ const markdownComponents: Components = {
   ),
 };
 
-const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming }) => {
+const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, onCitationClick }) => {
   const isUser = role === 'user';
 
   // Extract chart data from content if it contains <chart> tags.
@@ -87,28 +91,37 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
     <div className="vr-rise flex max-w-full items-start gap-4">
       <div
         className={cn(
-          'grid h-9 w-9 shrink-0 place-items-center rounded-md border',
+          'grid h-8 w-8 shrink-0 place-items-center rounded-full border',
           isUser
-            ? 'border-line-strong bg-ink-700 text-fg-300'
-            : 'border-amber-400/25 bg-amber-400/10 text-amber-400',
+            ? 'border-line-strong bg-ink-700'
+            : 'border-amber-400/45 bg-gradient-to-b from-ink-700 to-ink-850 shadow-[inset_0_0_0_2px_var(--color-ink-900),inset_0_0_0_3px_rgba(210,173,82,0.3)]',
         )}
         aria-hidden="true"
       >
-        {isUser ? <User size={17} /> : <Bot size={17} />}
+        <span
+          className={cn(
+            isUser
+              ? 'font-mono text-[9px] font-semibold uppercase tracking-widest text-fg-300'
+              : 'font-display text-[14px] leading-none text-amber-300',
+          )}
+        >
+          {isUser ? 'YOU' : 'V'}
+        </span>
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-fg-400">
-            {isUser ? 'You' : 'Analyst'}
+        <div className="mb-1.5 flex items-baseline gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-fg-400">
+            {isUser ? 'Inquiry' : 'The Analyst'}
           </span>
+          <span className="h-px flex-1 bg-line-soft" aria-hidden="true" />
         </div>
         <div
           className={cn(
-            'overflow-hidden text-[15px] leading-[1.7] text-fg-100 [overflow-wrap:anywhere]',
+            'overflow-hidden text-[14.5px] leading-[1.75] text-fg-100 [overflow-wrap:anywhere]',
             isUser
-              ? 'rounded-lg border border-line bg-ink-800/60 px-4 py-3'
-              : 'rounded-lg border border-line bg-ink-800/80 px-4 py-4',
+              ? 'rounded-md border border-line bg-ink-800/50 px-4 py-3 font-serif text-[15px] text-fg-200'
+              : 'rounded-md border border-line border-l-2 border-l-amber-500/60 bg-ink-800/70 px-5 py-4',
           )}
         >
           {cleanContent ? (
@@ -137,10 +150,22 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
         {sources && sources.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {sources.map((s, i) => (
-              <Badge key={i} tone="ledger" pill mono>
-                <ExternalLink size={10} aria-hidden="true" />
-                {s.ticker} {s.year} {s.section || s.chunk_type}
-              </Badge>
+              <button
+                key={i}
+                type="button"
+                onClick={onCitationClick ? () => onCitationClick(sources, i) : undefined}
+                aria-label={`Show source ${i + 1}: ${s.ticker} ${s.year}`}
+                title="Show in source panel"
+                className={cn(
+                  'rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60',
+                  onCitationClick ? 'cursor-pointer transition-transform hover:scale-[1.04]' : 'cursor-default',
+                )}
+              >
+                <Badge tone="ledger" pill mono>
+                  <ExternalLink size={10} aria-hidden="true" />
+                  [{i + 1}] {s.ticker} {s.year} {s.section || s.chunk_type}
+                </Badge>
+              </button>
             ))}
           </div>
         )}

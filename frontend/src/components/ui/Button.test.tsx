@@ -35,6 +35,7 @@ describe('Button', () => {
 
   it('applies variant styling classes', () => {
     render(<Button variant="primary">Go</Button>);
-    expect(screen.getByRole('button', { name: 'Go' }).className).toContain('bg-amber-400');
+    // Primary = the gold-foil treatment (gradient surface + sheen).
+    expect(screen.getByRole('button', { name: 'Go' }).className).toContain('vr-foil');
   });
 });

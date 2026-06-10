@@ -1,71 +1,76 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   ValueRAG design tokens — "Ledger Terminal"
-   A finance/terminal-leaning dark aesthetic: deep ink backgrounds, warm amber
-   ticker accent, ledger-green for positive signals, and an editorial serif for
-   display. Tokens are exposed to Tailwind via @theme so utilities like
-   `bg-ink-800`, `text-amber-400`, `font-display` work, and the same values are
-   mirrored to legacy CSS variables for any inline styles still in use.
+   ValueRAG design tokens — "The Analyst's Study"
+   An engraved-ledger aesthetic: deep racing-green ink surfaces, ivory type,
+   brass-gold accents used like foil stamping, didone display serif (Gloock)
+   for an etched-certificate voice. The signature move: retrieved SEC sources
+   render as ivory PAPER documents inside the dark study (see .vr-paper).
+   Tokens are exposed to Tailwind via @theme so utilities like `bg-ink-800`,
+   `text-amber-400`, `font-display` keep working; the semantic names are
+   unchanged from the previous theme so components restyle in place.
    ========================================================================== */
 @theme {
   /* Typography ------------------------------------------------------------ */
-  --font-display: "Fraunces", "Georgia", serif;
+  --font-display: "Gloock", "Georgia", serif;
   --font-serif: "Newsreader", "Georgia", serif;
-  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+  --font-sans: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Spline Sans Mono", "SF Mono", ui-monospace, monospace;
 
-  /* Ink / background scale (cool near-black, slight blue cast) ------------- */
-  --color-ink-950: #07090d;
-  --color-ink-900: #0a0d13;
-  --color-ink-850: #0d1118;
-  --color-ink-800: #11161f;
-  --color-ink-700: #161c27;
-  --color-ink-600: #1d2530;
-  --color-ink-500: #28323f;
+  /* Ink / background scale (deep racing-green, lamp-lit study) ------------- */
+  --color-ink-950: #090e0b;
+  --color-ink-900: #0c120e;
+  --color-ink-850: #0f1611;
+  --color-ink-800: #121a14;
+  --color-ink-700: #18231b;
+  --color-ink-600: #203024;
+  --color-ink-500: #2b4030;
 
   /* Hairlines / borders --------------------------------------------------- */
-  --color-line-strong: #2b3543;
-  --color-line: #1f2733;
-  --color-line-soft: #161d27;
+  --color-line-strong: #32483a;
+  --color-line: #23362a;
+  --color-line-soft: #19281e;
 
   /* Text ------------------------------------------------------------------ */
-  --color-paper-100: #f4f1e9; /* warm near-white for headings */
-  --color-paper-200: #e7e3d8;
-  --color-fg-100: #e8ebf0;
-  --color-fg-200: #b8c0cc;
-  --color-fg-300: #8a94a3;
-  --color-fg-400: #5e6877;
+  --color-paper-100: #f1ecdc; /* ivory for headings */
+  --color-paper-200: #e4ddc7;
+  --color-fg-100: #e9e6d7;
+  --color-fg-200: #bfc4ad;
+  --color-fg-300: #8e9a83;
+  --color-fg-400: #66745f;
 
-  /* Amber — the ticker accent (primary) ----------------------------------- */
-  --color-amber-300: #f3c969;
-  --color-amber-400: #e8a838;
-  --color-amber-500: #d4901f;
-  --color-amber-600: #a86f16;
+  /* Brass / gold — the foil-stamp accent (primary) ------------------------- */
+  --color-amber-200: #f1e2ae;
+  --color-amber-300: #e6cd83;
+  --color-amber-400: #d2ad52;
+  --color-amber-500: #b3903a;
+  --color-amber-600: #8a6c27;
 
-  /* Ledger green — positive / sources ------------------------------------- */
-  --color-ledger-300: #7fdca4;
-  --color-ledger-400: #45c585;
-  --color-ledger-500: #2da76d;
-  --color-ledger-600: #1d7a4f;
+  /* Ledger mint — positive / sources ---------------------------------------- */
+  --color-ledger-300: #99dfb0;
+  --color-ledger-400: #5cc488;
+  --color-ledger-500: #38a169;
+  --color-ledger-600: #25754c;
 
-  /* Signal colors --------------------------------------------------------- */
-  --color-crimson-400: #e8675f;
-  --color-crimson-500: #d4453c;
-  --color-azure-400: #5aa9e8;
+  /* Signal colors ----------------------------------------------------------- */
+  --color-crimson-400: #dd7158;
+  --color-crimson-500: #c24f3a;
+  --color-azure-400: #6fa6cf;
 
-  /* Radii ----------------------------------------------------------------- */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 9px;
-  --radius-lg: 13px;
-  --radius-xl: 18px;
+  /* Radii ------------------------------------------------------------------- */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  /* Shadows --------------------------------------------------------------- */
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
-    0 18px 40px -24px rgba(0, 0, 0, 0.8);
-  --shadow-glow-amber: 0 0 0 1px rgba(232, 168, 56, 0.25),
-    0 8px 24px -8px rgba(232, 168, 56, 0.35);
+  /* Shadows ------------------------------------------------------------------ */
+  --shadow-panel: 0 1px 0 rgba(241, 236, 220, 0.03) inset,
+    0 24px 48px -28px rgba(0, 0, 0, 0.85);
+  --shadow-glow-amber: 0 0 0 1px rgba(210, 173, 82, 0.28),
+    0 8px 24px -8px rgba(210, 173, 82, 0.35);
+  --shadow-paper: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 2px 6px rgba(9, 14, 11, 0.35), 0 24px 48px -20px rgba(9, 14, 11, 0.55);
 }
 
 /* Legacy variable aliases — keep older inline styles rendering correctly. */
@@ -82,42 +87,47 @@
   --error-color: var(--color-crimson-500);
   --warning-color: var(--color-amber-400);
   --font-family: var(--font-sans);
-  --sidebar-width: 280px;
+  --sidebar-width: 284px;
   --panel-gap: 12px;
+
+  /* Paper-document palette (light surface inside the dark study) */
+  --paper-bg: #f3eedf;
+  --paper-bg-deep: #ece5d1;
+  --paper-ink: #232a22;
+  --paper-ink-strong: #141a13;
+  --paper-muted: #6d7263;
+  --paper-line: #d9d1b9;
+  --paper-line-strong: #c4ba9d;
+  --paper-accent: #8a6c27;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* NOTE: no hand-rolled `* { margin:0; padding:0 }` reset here. Tailwind v4's
+   preflight (inside @layer base) already does this; an un-layered universal
+   reset would out-cascade every layered utility and zero out all spacing. */
 
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
+/* The study: layered green vignette, a faint brass lamp-glow, an engraved
+   guilloche field (banknote arcs), and a film of grain. */
 body {
   background-color: var(--color-ink-950);
-  /* Subtle ledger atmosphere: a faint amber glow top-left + a fine grid. */
   background-image:
-    radial-gradient(
-      1200px 600px at 0% -10%,
-      rgba(232, 168, 56, 0.05),
-      transparent 60%
-    ),
-    radial-gradient(
-      900px 500px at 100% 0%,
-      rgba(90, 169, 232, 0.035),
-      transparent 55%
-    ),
-    linear-gradient(transparent 95%, rgba(255, 255, 255, 0.015) 95%),
-    linear-gradient(90deg, transparent 95%, rgba(255, 255, 255, 0.015) 95%);
-  background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
+    /* grain */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.03 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    /* guilloche arcs, etched */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280'%3E%3Cg fill='none' stroke='%23d2ad52' stroke-opacity='0.045'%3E%3Ccircle cx='140' cy='140' r='24'/%3E%3Ccircle cx='140' cy='140' r='48'/%3E%3Ccircle cx='140' cy='140' r='72'/%3E%3Ccircle cx='140' cy='140' r='96'/%3E%3Ccircle cx='140' cy='140' r='120'/%3E%3Ccircle cx='0' cy='0' r='60'/%3E%3Ccircle cx='280' cy='0' r='60'/%3E%3Ccircle cx='0' cy='280' r='60'/%3E%3Ccircle cx='280' cy='280' r='60'/%3E%3C/g%3E%3C/svg%3E"),
+    /* brass lamp glow, top */
+    radial-gradient(1100px 520px at 22% -12%, rgba(210, 173, 82, 0.07), transparent 62%),
+    /* green depth, bottom-right */
+    radial-gradient(1200px 800px at 100% 110%, rgba(56, 161, 105, 0.05), transparent 60%),
+    /* vignette */
+    radial-gradient(140% 120% at 50% 40%, rgba(18, 26, 20, 0.55), rgba(9, 14, 11, 0.95));
   background-attachment: fixed;
   color: var(--color-fg-100);
   font-family: var(--font-sans);
-  font-feature-settings: "tnum" off;
   height: 100vh;
   overflow: hidden;
 }
@@ -127,6 +137,11 @@ body {
   display: flex;
 }
 
+::selection {
+  background: var(--color-amber-400);
+  color: var(--color-ink-950);
+}
+
 /* Tabular figures for numeric / monospace contexts. */
 .tnum,
 .font-mono {
@@ -134,8 +149,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -147,7 +162,7 @@ body {
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-line-strong);
+  background: var(--color-amber-600);
   background-clip: padding-box;
 }
 
@@ -170,16 +185,59 @@ body {
   50% { opacity: 1; transform: scale(1); }
 }
 @keyframes vr-rise {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes vr-ticker {
   0% { background-position: 0 0; }
   100% { background-position: -200% 0; }
 }
+/* Gold-foil sheen sweep for primary actions. */
+@keyframes vr-sheen {
+  from { transform: translateX(-130%) skewX(-18deg); }
+  to { transform: translateX(230%) skewX(-18deg); }
+}
 
 .animate-spin { animation: spin 1s linear infinite; }
-.vr-rise { animation: vr-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.vr-rise { animation: vr-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Double hairline rule — the stock-certificate border treatment. */
+.vr-rule-b {
+  border-bottom: 1px solid var(--color-line-strong);
+  box-shadow: 0 3px 0 -1px var(--color-line-soft);
+}
+.vr-rule-t {
+  border-top: 1px solid var(--color-line-strong);
+  box-shadow: 0 -3px 0 -1px var(--color-line-soft);
+}
+
+/* Dotted ledger leader (`AAPL ······· 2026 10-Q`). */
+.vr-leader {
+  flex: 1;
+  margin: 0 8px;
+  border-bottom: 1px dotted var(--color-line-strong);
+  transform: translateY(-3px);
+  min-width: 12px;
+}
+
+/* Gold-foil primary surface with a hover sheen. Used by Button[primary]. */
+.vr-foil {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(180deg, var(--color-amber-300), var(--color-amber-400) 55%, var(--color-amber-500));
+}
+.vr-foil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 252, 240, 0.55), transparent);
+  transform: translateX(-130%) skewX(-18deg);
+  pointer-events: none;
+}
+.vr-foil:hover::after {
+  animation: vr-sheen 0.7s cubic-bezier(0.3, 0.6, 0.3, 1);
+}
 
 /* Markdown surface tuning inside assistant messages. */
 .markdown-content > :last-child { margin-bottom: 0; }
@@ -187,14 +245,14 @@ body {
 .markdown-content h2,
 .markdown-content h3 {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 400;
   color: var(--color-paper-100);
-  letter-spacing: -0.01em;
-  margin: 18px 0 8px;
+  letter-spacing: 0.005em;
+  margin: 20px 0 8px;
   line-height: 1.25;
 }
-.markdown-content h1 { font-size: 1.35em; }
-.markdown-content h2 { font-size: 1.18em; }
+.markdown-content h1 { font-size: 1.4em; }
+.markdown-content h2 { font-size: 1.2em; }
 .markdown-content h3 { font-size: 1.05em; }
 .markdown-content strong { color: var(--color-paper-100); font-weight: 600; }
 .markdown-content blockquote {
@@ -207,9 +265,27 @@ body {
 }
 
 /* ============================================================================
-   SEC filing table rendering (SourcePanel). Injected HTML is sanitized in JS;
-   these rules style the structural table tags. (Ported from the original
-   index.css, re-pointed at the new token palette.)
+   THE PAPER DOCUMENT — retrieved SEC sources render as an ivory sheet inside
+   the dark study. Apply .vr-paper to the sheet; everything inside flips to
+   ink-on-paper, including the filing tables below.
+   ========================================================================== */
+.vr-paper {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.18 0 0 0 0 0.12 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23p)'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, var(--paper-bg) 0%, var(--paper-bg-deep) 100%);
+  color: var(--paper-ink);
+  border: 1px solid var(--paper-line-strong);
+  border-radius: 2px;
+  box-shadow: var(--shadow-paper);
+}
+.vr-paper ::selection {
+  background: var(--paper-accent);
+  color: var(--paper-bg);
+}
+
+/* ============================================================================
+   SEC filing table rendering. Injected HTML is sanitized in JS; these rules
+   style the structural tags. Default = dark theme; .vr-paper context = print.
    ========================================================================== */
 .sec-table-container {
   padding: 16px;
@@ -267,10 +343,36 @@ body {
   max-width: 8px !important;
   padding: 4px 0 !important;
 }
-.sec-table-container td:empty::before,
-.sec-table-container th:empty::before {
+.sec-table-container td:empty::before {
   content: "";
 }
 .sec-table-container tbody tr:hover td {
-  background: rgba(232, 168, 56, 0.06);
+  background: rgba(210, 173, 82, 0.07);
+}
+
+/* Print variant inside the paper sheet. */
+.vr-paper .sec-table-container {
+  background: transparent;
+  border: 1px solid var(--paper-line);
+  border-radius: 2px;
+}
+.vr-paper .sec-table-container table {
+  color: var(--paper-ink);
+}
+.vr-paper .sec-table-container td,
+.vr-paper .sec-table-container th {
+  border-bottom: 1px solid var(--paper-line);
+}
+.vr-paper .sec-table-container tr td:first-child,
+.vr-paper .sec-table-container tr th:first-child {
+  color: var(--paper-ink-strong);
+}
+.vr-paper .sec-table-container thead td,
+.vr-paper .sec-table-container thead th {
+  color: var(--paper-muted);
+  border-bottom: 2px solid var(--paper-line-strong);
+  background: rgba(20, 26, 19, 0.03);
+}
+.vr-paper .sec-table-container tbody tr:hover td {
+  background: rgba(138, 108, 39, 0.08);
 }

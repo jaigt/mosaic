@@ -95,6 +95,28 @@ class TestWriteVisibility:
         assert handle.count_rows() == 1
 
 
+class TestDimValidation:
+    def test_mismatched_table_dim_raises(self, temp_db):
+        """Opening a table whose vector width disagrees with EMBEDDING_DIM must
+        fail fast with a clear error instead of corrupting search/insert."""
+        import pyarrow as pa
+
+        wrong_dim = store.EMBEDDING_DIM + 1
+        schema = pa.schema([
+            pa.field("chunk_id", pa.string()),
+            pa.field("vector", pa.list_(pa.float32(), wrong_dim)),
+        ])
+        store._db().create_table(store.TABLE_NAME, schema=schema)
+
+        with pytest.raises(RuntimeError, match="dimension mismatch"):
+            store.get_table()
+
+    def test_matching_table_dim_passes(self, temp_db):
+        table = store.get_table()  # created with the correct schema
+        # Re-opening validates and succeeds.
+        assert store.get_table().count_rows() == table.count_rows()
+
+
 class TestMaybeCreateIndex:
     def test_noop_on_tiny_table(self, temp_db):
         """On a small table, no index is created and nothing raises."""

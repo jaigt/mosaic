@@ -32,8 +32,8 @@ const AgentState: React.FC<AgentStateProps> = ({ steps, isActive }) => {
           ) : (
             <span className="h-2 w-2 rounded-full bg-ledger-400" />
           )}
-          <span className="font-mono text-[12px] uppercase tracking-wider text-fg-200">
-            {isActive ? 'Analyst is working' : 'Analysis complete'}
+          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-200">
+            {isActive ? 'Working the filings…' : 'Analysis complete'}
           </span>
         </div>
         {isExpanded ? (

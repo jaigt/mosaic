@@ -80,6 +80,29 @@ _SCHEMA = pa.schema([
 ])
 
 
+def _validate_vector_dim(table: lancedb.table.Table) -> None:
+    """Fail fast if the configured embedding model disagrees with the table.
+
+    EMBEDDING_DIM is derived from settings.embedding_model; the table's vector
+    column width was fixed at creation time. A mismatch (e.g. the .env was
+    later pointed at a different embedding model) would otherwise surface as
+    confusing search/insert errors deep inside LanceDB.
+    """
+    try:
+        field = table.schema.field("vector")
+        actual = field.type.list_size
+    except Exception:  # pragma: no cover - schema introspection is best-effort
+        return
+    if actual is not None and actual != EMBEDDING_DIM:
+        raise RuntimeError(
+            f"Embedding dimension mismatch: table '{TABLE_NAME}' stores "
+            f"{actual}-dim vectors but EMBEDDING_MODEL produces "
+            f"{EMBEDDING_DIM}-dim vectors. Changing the embedding model "
+            f"requires a new table + re-ingest (or restore the original "
+            f"EMBEDDING_MODEL in .env)."
+        )
+
+
 def get_table() -> lancedb.table.Table:
     """Connect to (or create) the LanceDB table.
 
@@ -87,8 +110,12 @@ def get_table() -> lancedb.table.Table:
     that the returned handle reflects the latest committed rows.
     """
     db = _db()
-    if TABLE_NAME in db.table_names():
-        return db.open_table(TABLE_NAME)
+    # list_tables() replaces the deprecated table_names(); it returns a
+    # ListTablesResponse whose .tables is the list of names.
+    if TABLE_NAME in db.list_tables().tables:
+        table = db.open_table(TABLE_NAME)
+        _validate_vector_dim(table)
+        return table
     logger.info(f"Creating new LanceDB table '{TABLE_NAME}'")
     return db.create_table(TABLE_NAME, schema=_SCHEMA)
 

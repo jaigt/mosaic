@@ -11,8 +11,23 @@ const App: React.FC = () => {
   const [leftWidth, setLeftWidth] = useState(50);
   const [isResizing, setIsResizing] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
+  const [activeSourceIdx, setActiveSourceIdx] = useState(0);
   const [ingestOpen, setIngestOpen] = useState(false);
   const [activeFiling, setActiveFiling] = useState<FilingInfo | null>(null);
+
+  // New result set → reset the focused source so a stale index can't blank
+  // the panel.
+  const handleSourcesUpdate = (next: Source[]) => {
+    setSources(next);
+    setActiveSourceIdx(0);
+  };
+
+  // A citation pill in the chat focuses its source in the panel (loading that
+  // message's source set if the panel currently shows a different one).
+  const handleCitationClick = (msgSources: Source[], index: number) => {
+    setSources(msgSources);
+    setActiveSourceIdx(index);
+  };
 
   const startResizing = () => setIsResizing(true);
   const stopResizing = () => setIsResizing(false);
@@ -47,9 +62,10 @@ const App: React.FC = () => {
       <main className="flex flex-1 gap-2 p-3">
         <div className="flex min-w-0 overflow-hidden" style={{ width: `${leftWidth}%` }}>
           <ChatPanel
-            onSourcesUpdate={setSources}
+            onSourcesUpdate={handleSourcesUpdate}
+            onCitationClick={handleCitationClick}
             onIngestClick={() => setIngestOpen(true)}
-            onClear={() => { setSources([]); setActiveFiling(null); }}
+            onClear={() => { setSources([]); setActiveSourceIdx(0); setActiveFiling(null); }}
             activeFiling={activeFiling}
             onClearFiling={() => setActiveFiling(null)}
           />
@@ -70,7 +86,11 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex flex-1 min-w-0 overflow-hidden">
-          <SourcePanel sources={sources} />
+          <SourcePanel
+            sources={sources}
+            activeIdx={activeSourceIdx}
+            onActiveIdxChange={setActiveSourceIdx}
+          />
         </div>
       </main>
 

@@ -4,7 +4,8 @@
 > has been done, what remains, and how to continue. Written as a handoff so a
 > future session (human or agent) can pick up cold. Keep this updated.
 >
-> **Last updated:** 2026-06-02 (round 2: RAG quality + ops + design system, all committed)
+> **Last updated:** 2026-06-09 (round 3: config-drift fixes, synthesis-error
+> surfacing, citation UX, chunk overlap — see §3.2)
 >
 > 👉 **For the live, prioritized to-do list, see [`docs/TODO.md`](./TODO.md).** This
 > doc is the background/architecture/what's-done handoff; TODO.md is the actionable
@@ -34,13 +35,18 @@ Memory index: `~/.claude/projects/.../memory/MEMORY.md`.
 
 ## 2. ENVIRONMENT GOTCHAS (read before running anything)
 
-1. **`GOOGLE_API_KEY` in `.env` is currently INVALID/expired.** Gemini returns
-   `400 API_KEY_INVALID`. This blocks any **live ingest** (table summarization +
-   embedding) and **live chat/retrieval** (query embedding + synthesis). All
-   EDGAR/XBRL fetching works (no Google key needed). **Refresh this key** to do a
-   real end-to-end ingest. This is the single thing preventing full live verification.
-2. **Python 3.9** (EOL). Google SDKs emit `FutureWarning` on import; urllib3 warns
-   about LibreSSL. Works, but upgrade to 3.11+ is a tracked task.
+1. **All API keys in `.env` are PLACEHOLDERS** (`your_..._key_here`) — Google,
+   Anthropic, and OpenAI. No LLM/embedding call can succeed until at least
+   `GOOGLE_API_KEY` is set (free: https://aistudio.google.com/app/apikey). All
+   EDGAR/XBRL fetching works without keys. This is the single thing preventing
+   full live verification. (The previously-documented "invalid key" plus stale
+   model names were fixed 2026-06-09 — see §3.2.)
+2. **The `.venv` is broken-by-move:** `pyvenv.cfg` and `bin/activate` hardcode
+   the project's old `~/Desktop/Code/valueinvesting` path, so
+   `source .venv/bin/activate` silently falls through to system/anaconda
+   Python (tests then fail with `No module named fastapi`). **Invoke
+   `./.venv/bin/python -m pytest backend/tests/` directly** — that works.
+   Rebuild on Python 3.11+ is the tracked fix (3.9 is EOL anyway).
 3. **Subagents can't run Python/pytest in their sandbox** — when dispatching agents
    to change backend code, they cannot self-verify. The orchestrator must run
    `pytest` + live smokes after they finish. (Frontend agents can run `npm`.)
@@ -97,6 +103,44 @@ integrated + verified by the parent:
 - **Cross-agent fix:** SSE `error` data kept a plain string (frontend contract) —
   request_id moved to logs + `ref:` suffix rather than an object payload.
 - Still blocked on the invalid `GOOGLE_API_KEY` for live LLM round-trips.
+
+### 3.2 Third round (2026-06-09 audit) — config drift, error surfacing, UX
+
+**The headline finding:** even with a valid key, the app would not have worked.
+`.env` pinned `gemini-2.0-flash` (shut down upstream),
+`gemini-2.5-pro-preview-03-25` (retired preview), and `text-embedding-004` —
+which `embedder.py` silently resolved to **768 dims** against the existing
+**3072-dim** LanceDB table, so every ingest/query would have failed or
+corrupted the schema contract. Model names were re-verified against live
+Google docs (June 2026: `gemini-3.5-flash`, `gemini-3.1-flash-lite`,
+`gemini-embedding-001` still available at 3072 with `task_type`;
+`gemini-embedding-2` exists but drops `task_type` and is embedding-space
+incompatible — adopting it means code changes + re-ingest).
+
+Changes (all tested; 99 → 112 backend tests):
+- **Config integrity:** `.env`/`.env.example`/`config.py` aligned on live
+  models; unknown embedding models raise (no silent 768 default); `get_table()`
+  fail-fast validates table dim vs `EMBEDDING_DIM`.
+- **Error surfacing:** synthesis producer-thread exceptions now emit an SSE
+  `error` event (previously: silent empty answer).
+- **RAG:** sliding-window chunk overlap (`_TEXT_CHUNK_OVERLAP=250`,
+  word-aligned, intra-section); row-aware `</tr>` truncation in
+  `_format_sources`.
+- **Frontend:** `X-API-Key` via `VITE_API_KEY`; dead nav removed; SourcePanel
+  Download/Expand wired (Search cut); clickable citation pills focus the
+  matching source (sources/activeIdx lifted to `App.tsx`); `--color-amber-200`
+  token added.
+- **Deprecations:** `list_tables().tables`, pydantic `SettingsConfigDict`.
+
+**Model-choice rationale (kept Gemini default):** the $0 AI Studio free tier
+covers both generation and embeddings, which no other provider does — Anthropic
+has no embedding API at all. Claude remains a one-line swap for synthesis
+(`SYNTHESIS_MODEL=claude-opus-4-8`, ~$5/$25 per MTok; `claude-haiku-4-5` ~$1/$5
+for the fast/table-summary role) and pairs with Google or OpenAI embeddings —
+`text-embedding-3-large` is conveniently also 3072-dim, though a different
+embedding space (re-ingest required either way). A `local-*` embedding route
+(fastembed/ONNX) would remove the key dependency for ingest+retrieval entirely
+and is tracked in TODO P2, gated on the Python 3.11 venv rebuild.
 
 ---
 
@@ -277,7 +321,7 @@ Dispatched as 3 file-disjoint parallel agents + inline auth work:
 ```bash
 # Backend
 source .venv/bin/activate
-python -m pytest backend/tests/ -q            # must stay green (44+)
+python -m pytest backend/tests/ -q            # must stay green (112+)
 python -c "from backend.api.main import app"  # import smoke
 
 # Frontend

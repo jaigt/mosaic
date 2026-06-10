@@ -1,5 +1,16 @@
 const BASE = '/api';
 
+// Optional API key for the backend's cost-bearing endpoints (/chat, /ingest,
+// /retrieve). Set VITE_API_KEY at build/dev time to match the backend's
+// API_KEY setting; when unset (local dev default) no header is sent.
+const API_KEY: string | undefined = import.meta.env.VITE_API_KEY;
+
+function jsonHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  return headers;
+}
+
 export interface Source {
   ticker: string;
   year: number;
@@ -33,7 +44,7 @@ export async function* streamChat(
 ): AsyncGenerator<SseEvent> {
   const resp = await fetch(`${BASE}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: jsonHeaders(),
     body: JSON.stringify({
       message,
       conversation_history: history,
@@ -72,7 +83,7 @@ export async function ingestFiling(
 ): Promise<{ status: string; task_id: string }> {
   const resp = await fetch(`${BASE}/ingest`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: jsonHeaders(),
     body: JSON.stringify({ ticker, document_type: documentType, year: year || null }),
   });
   if (!resp.ok) {

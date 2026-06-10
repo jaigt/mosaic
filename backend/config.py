@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
 
@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""     # Optional — needed for gpt-* / o* models
     sec_user_agent: str
     lancedb_path: str = "./data/lancedb"
-    fast_model: str = "gemini-3.1-flash-lite-preview"
-    synthesis_model: str = "gemini-2.5-flash"
+    fast_model: str = "gemini-3.1-flash-lite"
+    synthesis_model: str = "gemini-3.5-flash"
     embedding_model: str = "gemini-embedding-001"
     # Allowed browser origins for CORS. Comma-separated in .env; defaults to the
     # Vite dev server. Set to your deployed frontend origin in production.
@@ -20,9 +20,10 @@ class Settings(BaseSettings):
     # Per-IP request budget per minute for cost-bearing endpoints. 0 = disabled.
     rate_limit_per_minute: int = 30
 
-    class Config:
-        env_file = Path(__file__).parent.parent / ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).parent.parent / ".env",
+        env_file_encoding="utf-8",
+    )
 
 
 settings = Settings()

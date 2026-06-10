@@ -33,7 +33,8 @@ npm run dev                   # Vite dev server, proxies /api/* → http://local
 
 ### Tests
 ```bash
-pytest backend/tests          # backend (99 passing)
+./.venv/bin/python -m pytest backend/tests   # backend (112 passing)
+                              # (invoke the venv python directly — see docs/TODO.md P3)
 cd frontend && npm test       # frontend (Vitest)
 ```
 

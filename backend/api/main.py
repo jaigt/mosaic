@@ -353,6 +353,12 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
             except RuntimeError:
                 stop_event.set()
 
+        # Holds an exception raised inside the producer thread (e.g. a missing
+        # API key or a provider error mid-stream). Without this, a failing
+        # producer would silently end the stream and the user would see an
+        # empty answer with no error.
+        producer_error: list = []
+
         def _produce():
             try:
                 for text in stream_generate(full_prompt, model=settings.synthesis_model):
@@ -365,6 +371,8 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                     if stop_event.is_set():
                         break
                     _schedule(text)
+            except Exception as e:  # noqa: BLE001 — surfaced to the client below
+                producer_error.append(e)
             finally:
                 _schedule(_DONE)
 
@@ -401,6 +409,17 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
             # consumer closing us): always signal the producer to stop pumping
             # paid tokens.
             stop_event.set()
+
+        # A synthesis failure (bad/missing API key, provider outage, model
+        # retired) must reach the client as an explicit error, not as a
+        # silently empty answer.
+        if producer_error:
+            e = producer_error[0]
+            logger.error(f"Synthesis stream failed: {e}")
+            log_event("ERROR", "chat_synthesis_error", request_id=request_id, error=str(e))
+            yield sse("error", f"Synthesis failed: {e} (ref: {request_id})")
+            yield sse("done", None)
+            return
 
         # Step 4: Send source metadata for frontend citation panel
         sources_payload = [
@@ -473,13 +492,34 @@ def _format_history(
     return "\n".join(lines)
 
 
+# Max characters of a chunk's raw payload included in the synthesis prompt.
+_SOURCE_PAYLOAD_LIMIT = 2000
+
+
+def _truncate_payload(payload: str, chunk_type: str, limit: int = _SOURCE_PAYLOAD_LIMIT) -> str:
+    """Truncate a source payload for the synthesis prompt.
+
+    For table chunks, cut on a row boundary (the last ``</tr>`` within the
+    limit) so the LLM never sees a table sliced mid-row — a mid-row cut can
+    pair a label with the wrong number. Falls back to a plain character cut
+    when no row boundary exists in range.
+    """
+    if len(payload) <= limit:
+        return payload
+    if chunk_type == "table":
+        cut = payload.rfind("</tr>", 0, limit)
+        if cut != -1:
+            return payload[: cut + len("</tr>")]
+    return payload[:limit]
+
+
 def _format_sources(chunks) -> str:
     parts = []
     for i, c in enumerate(chunks, 1):
         parts.append(
             f"[{i}] {c.chunk.ticker} {c.chunk.document_type} {c.chunk.filing_year} "
             f"({c.chunk.filing_quarter}) — {c.chunk.sec_item_section}\n"
-            f"{c.chunk.raw_payload[:2000]}"
+            f"{_truncate_payload(c.chunk.raw_payload, c.chunk.chunk_type)}"
         )
     return "\n\n---\n\n".join(parts)
 

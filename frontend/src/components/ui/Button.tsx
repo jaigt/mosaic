@@ -22,9 +22,10 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    'bg-amber-400 text-ink-950 font-semibold border border-amber-400 ' +
-    'hover:bg-amber-300 hover:border-amber-300 ' +
-    'shadow-[0_6px_18px_-8px_rgba(232,168,56,0.6)]',
+    // Gold-foil treatment: gradient surface + hover sheen sweep (see .vr-foil).
+    'vr-foil text-ink-950 font-semibold border border-amber-500/80 ' +
+    'hover:brightness-[1.06] ' +
+    'shadow-[0_6px_18px_-8px_rgba(210,173,82,0.55)]',
   secondary:
     'bg-ink-700 text-fg-100 border border-line-strong ' +
     'hover:bg-ink-600 hover:border-amber-500/40',

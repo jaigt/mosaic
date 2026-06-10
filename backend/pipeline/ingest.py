@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 # Target size for merged text chunks (~1 filing page)
 _TEXT_CHUNK_TARGET = 2500
+# Characters carried over from the end of one text chunk into the next within
+# the same section, so a fact spanning a size-based boundary appears whole in
+# at least one chunk.
+_TEXT_CHUNK_OVERLAP = 250
 # Minimum characters for any chunk to be worth embedding
 _MIN_CHUNK_LENGTH = 200
 
@@ -49,10 +53,27 @@ _TABLE_RPM = 15
 _TABLE_MAX_CONCURRENCY = 5
 
 
+def _tail_overlap(text: str, size: int = _TEXT_CHUNK_OVERLAP) -> str:
+    """Last ~``size`` characters of ``text``, trimmed to a word boundary."""
+    if len(text) <= size:
+        return text
+    tail = text[-size:]
+    # Drop the (likely partial) first word so the overlap starts cleanly.
+    cut = tail.find(" ")
+    if cut != -1:
+        tail = tail[cut + 1:]
+    return tail
+
+
 def _merge_text_elements(elements: list[ParsedElement]) -> list[ParsedElement]:
     """
     Merge consecutive text elements from the same section into page-sized chunks.
     Tables are left as individual elements — they get their own summarization pass.
+
+    When a chunk is split because it reached the size target (NOT on a section
+    change), the tail of the previous chunk is carried into the next one as a
+    sliding-window overlap, so facts spanning the boundary survive in full in
+    at least one chunk.
     """
     merged: list[ParsedElement] = []
     buffer_text = ""
@@ -74,9 +95,17 @@ def _merge_text_elements(elements: list[ParsedElement]) -> list[ParsedElement]:
             flush()
             merged.append(el)
         else:
-            # Start a new buffer on section change or when target size reached
-            if buffer_section and (el.section != buffer_section or len(buffer_text) >= _TEXT_CHUNK_TARGET):
+            if buffer_section and el.section != buffer_section:
+                # Section boundary: hard break, no overlap across sections.
                 flush()
+            elif buffer_section and len(buffer_text) >= _TEXT_CHUNK_TARGET:
+                # Size boundary within a section: flush, then seed the next
+                # chunk with the tail of this one (sliding-window overlap).
+                overlap = _tail_overlap(buffer_text)
+                section = buffer_section
+                flush()
+                buffer_text = overlap
+                buffer_section = section
             buffer_section = el.section
             buffer_text += ("\n\n" if buffer_text else "") + el.content
 
