@@ -23,7 +23,9 @@ const base =
 const variants: Record<ButtonVariant, string> = {
   primary:
     // Gold-foil treatment: gradient surface + hover sheen sweep (see .vr-foil).
-    'vr-foil text-ink-950 font-semibold border border-amber-500/80 ' +
+    // Text color comes from the --color-on-accent token so it stays readable
+    // across themes (dark ink on gold in study; white on blue in modern).
+    'vr-foil text-[color:var(--color-on-accent)] font-semibold border border-amber-500/80 ' +
     'hover:brightness-[1.06] ' +
     'shadow-[0_6px_18px_-8px_rgba(210,173,82,0.55)]',
   secondary:

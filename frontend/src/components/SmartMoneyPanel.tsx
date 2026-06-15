@@ -147,7 +147,7 @@ const HolderRow: React.FC<{ pos: FundPosition }> = ({ pos }) => {
   return (
     <li className="flex items-center gap-2 rounded-md border-l-2 border-line bg-ink-800/70 px-2.5 py-1.5">
       <div className="min-w-0 flex-1">
-        <div className="truncate font-mono text-[12px] font-semibold text-fg-100">{fund}</div>
+        <div className="truncate font-mono text-[12px] font-semibold text-fg-100" title={fund}>{fund}</div>
         {pct && <div className="font-serif text-[11px] italic text-fg-400">{pct} of book</div>}
       </div>
       <Badge tone={tone} mono className="shrink-0 px-1.5 py-0.5 text-[9px]" title={`Position ${pos.change}`}>
@@ -185,7 +185,10 @@ const Exits: React.FC<{ exits: FundPosition[] }> = ({ exits }) => (
           key={`${e.cik}-exit-${i}`}
           className="flex items-center gap-2 rounded-md border-l-2 border-crimson-500/40 bg-ink-800/70 px-2.5 py-1.5"
         >
-          <div className="min-w-0 flex-1 truncate font-mono text-[12px] font-semibold text-fg-200">
+          <div
+            className="min-w-0 flex-1 truncate font-mono text-[12px] font-semibold text-fg-200"
+            title={e.fund || 'Unknown fund'}
+          >
             {e.fund || 'Unknown fund'}
           </div>
           <span className="shrink-0 font-mono text-[10px] tabular-nums text-fg-400">

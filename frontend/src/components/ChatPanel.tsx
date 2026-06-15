@@ -4,6 +4,7 @@ import Message from './Message';
 import AgentState, { AgentStep, AgentStepKind } from './AgentState';
 import { streamChat, Source, FilingInfo, VerificationResult } from '../api';
 import { Button, Badge, Textarea, Card } from './ui';
+import ThemeToggle from './ThemeToggle';
 
 interface ChatMessage {
   id: string;
@@ -273,14 +274,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             The Analyst's Desk
           </h2>
           {activeFiling ? (
-            <Badge tone="amber" mono className="max-w-full">
-              <FileText size={10} aria-hidden="true" />
-              <span className="truncate">{activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}</span>
+            <Badge tone="amber" mono className="min-w-0 max-w-[42vw] sm:max-w-[220px]">
+              <FileText size={10} className="shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}</span>
               <button
                 type="button"
                 onClick={onClearFiling}
                 aria-label="Clear filing focus"
-                className="ml-0.5 grid place-items-center rounded-sm hover:text-amber-200"
+                className="ml-0.5 grid shrink-0 place-items-center rounded-sm hover:text-amber-200"
               >
                 <X size={11} />
               </button>
@@ -302,12 +303,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
               <Trash2 size={13} /> Clear
             </Button>
           )}
+          <ThemeToggle />
         </div>
       </header>
 
       <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-6">
         {messages.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center px-10 py-8 text-center">
+          <div className="flex min-h-full flex-1 flex-col items-center justify-center px-6 py-8 text-center sm:px-10">
             <div className="vr-rise font-mono text-[10px] uppercase tracking-[0.32em] text-amber-400/90" style={{ animationDelay: '60ms' }}>
               {activeFiling
                 ? `${activeFiling.ticker} · ${activeFiling.filing_year} ${activeFiling.document_type}`

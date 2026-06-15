@@ -146,32 +146,45 @@ const TxnRow: React.FC<{ txn: InsiderTxn }> = ({ txn }) => {
   const insider = txn.insider || 'Unknown';
 
   return (
-    <li className="flex items-center gap-2 rounded-md border-l-2 border-line bg-ink-800/70 px-2.5 py-1.5">
-      <span className="w-[58px] shrink-0 font-mono text-[10px] tabular-nums text-fg-400">{date}</span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-mono text-[12px] font-semibold text-fg-100">{insider}</div>
-        {txn.position && (
-          <div className="truncate font-serif text-[11px] italic text-fg-400">{txn.position}</div>
-        )}
-      </div>
-      <Badge
-        tone={tone}
-        mono
-        className="shrink-0 px-1.5 py-0.5 text-[9px]"
-        title={txn.description || txn.code || txn.txn_type}
-      >
-        {txn.txn_type}
-      </Badge>
-      <div className="w-[68px] shrink-0 text-right">
-        <div
-          className={cn(
-            'font-mono text-[11.5px] font-semibold tabular-nums',
-            tone === 'ledger' ? 'text-ledger-300' : tone === 'crimson' ? 'text-crimson-400' : 'text-fg-200',
-          )}
+    <li className="rounded-md border-l-2 border-line bg-ink-800/70 px-2.5 py-1.5">
+      {/* Top row: insider name (full width, truncates gracefully) + type tag. */}
+      <div className="flex items-center gap-2">
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-[12px] font-semibold text-fg-100"
+          title={insider}
         >
-          {formatShares(txn.shares)}
+          {insider}
+        </span>
+        <Badge
+          tone={tone}
+          mono
+          className="shrink-0 px-1.5 py-0.5 text-[9px]"
+          title={txn.description || txn.code || txn.txn_type}
+        >
+          {txn.txn_type}
+        </Badge>
+      </div>
+      {/* Bottom row: compact single-line date + position, then shares/price. */}
+      <div className="mt-0.5 flex items-baseline gap-2">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <span className="whitespace-nowrap font-mono text-[10px] tabular-nums text-fg-400">{date}</span>
+          {txn.position && (
+            <span className="ml-1.5 truncate font-serif text-[11px] italic text-fg-400" title={txn.position}>
+              · {txn.position}
+            </span>
+          )}
         </div>
-        {price && <div className="font-mono text-[10px] tabular-nums text-fg-400">{price}</div>}
+        <div className="shrink-0 text-right">
+          <span
+            className={cn(
+              'font-mono text-[11.5px] font-semibold tabular-nums',
+              tone === 'ledger' ? 'text-ledger-300' : tone === 'crimson' ? 'text-crimson-400' : 'text-fg-200',
+            )}
+          >
+            {formatShares(txn.shares)}
+          </span>
+          {price && <span className="ml-1.5 font-mono text-[10px] tabular-nums text-fg-400">{price}</span>}
+        </div>
       </div>
     </li>
   );

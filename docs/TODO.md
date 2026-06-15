@@ -205,7 +205,14 @@ query" — the gap is DISCOVERABILITY, not capability.
       focused filing (discovered without ingesting first).
 - [ ] De-emphasize manual Ingest (auto-ingest is the front door) + "you can just
       ask" hint; tooltip explaining the verification badge.
-- [ ] Chat-dominant layout default (sources collapsible); chat persistence.
+- [x] Chat-dominant default split + chat persistence (localStorage).
+- [x] **Visual audit + 3-theme system** (see `docs/VISUAL_AUDIT.md`): contrast
+      bump, mobile header-overflow fix, prompts-below-fold fix, insider-row
+      restructure; Study (default) + Modern-Dark + Modern-Light (electric blue),
+      toggle in the chat header, persisted. Verified via screenshots in all 3.
+- [ ] Remaining UX: key panels to last-discussed ticker is DONE; still open —
+      "you can just ask" hint near (now-removed) ingest is moot; consider a
+      collapsible source panel.
 
 ### TEST-LATER (deferred on free-tier quota — DO THIS)
 - [ ] Full live ReAct run exercising the new insider/13F tools end-to-end (the
