@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { ExternalLink, ShieldCheck, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { Source, VerificationResult } from '../api';
 import { Badge, Spinner, cn } from './ui';
+import type { ChartRow, ChartSpec } from './Visualizer/FinancialChart';
 
 // Heavy renderers are split into async chunks: recharts (FinancialChart) and
 // react-markdown (MarkdownContent) only load when an assistant message that
@@ -25,7 +26,7 @@ interface Citation {
 interface MessageProps {
   role: 'user' | 'assistant';
   content: string;
-  chartData?: { name: string; value: number }[];
+  chartData?: ChartRow[];
   citations?: Citation[];
   sources?: Source[];
   isStreaming?: boolean;
@@ -105,18 +106,22 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
   // Extract chart data from content if it contains <chart> tags.
   // Memoized on `content` so the (potentially expensive) regex + JSON.parse
   // only runs when the text actually changes.
-  const { cleanContent, inlineChartData, inlineChartTitle } = useMemo(() => {
+  const { cleanContent, inlineChartData, inlineChartTitle, inlineChartType, inlineChartSeries } = useMemo(() => {
     let cleanContent = content;
-    let inlineChartData = chartData;
+    let inlineChartData: ChartRow[] | undefined = chartData;
     let inlineChartTitle = 'Analysis';
+    let inlineChartType: string | undefined;
+    let inlineChartSeries: string[] | undefined;
 
     if (!isUser && content.includes('<chart>')) {
       try {
         const chartMatch = content.match(/<chart>([\s\S]*?)<\/chart>/);
         if (chartMatch) {
-          const parsed = JSON.parse(chartMatch[1]);
+          const parsed = JSON.parse(chartMatch[1]) as ChartSpec;
           inlineChartData = parsed.data;
           if (parsed.title) inlineChartTitle = parsed.title;
+          if (parsed.type) inlineChartType = parsed.type;
+          if (parsed.series) inlineChartSeries = parsed.series;
           cleanContent = content.replace(/<chart>[\s\S]*?<\/chart>/, '').trim();
         }
       } catch (e) {
@@ -124,7 +129,7 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
       }
     }
 
-    return { cleanContent, inlineChartData, inlineChartTitle };
+    return { cleanContent, inlineChartData, inlineChartTitle, inlineChartType, inlineChartSeries };
   }, [content, chartData, isUser]);
 
   return (
@@ -184,7 +189,12 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
         {inlineChartData && inlineChartData.length > 0 && (
           <div className="mt-4">
             <Suspense fallback={<LazyFallback label="Loading chart" />}>
-              <FinancialChart title={inlineChartTitle} data={inlineChartData} />
+              <FinancialChart
+                title={inlineChartTitle}
+                data={inlineChartData}
+                type={inlineChartType}
+                series={inlineChartSeries}
+              />
             </Suspense>
           </div>
         )}
