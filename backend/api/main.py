@@ -11,6 +11,7 @@ import json
 import logging
 import threading
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import AsyncGenerator, Optional
@@ -31,6 +32,7 @@ from backend.agent import ReactAgent, plan_auto_ingest, verify_answer
 from backend.holdings import get_fund_holdings, get_insider_activity
 from backend.holdings import funds_holding as funds_holding_lookup
 from backend.holdings import refresh as refresh_smart_money
+from backend.holdings.superinvestors import index_is_stale, load_index
 from backend.pipeline.ingest import ingest_filing
 from backend.pipeline.llm import generate, stream_generate, supports_native_tools
 from backend.pipeline.store import get_table
@@ -48,7 +50,39 @@ _SSE_QUEUE_MAXSIZE = 64
 # How often the stream re-checks whether the client has disconnected (seconds).
 _DISCONNECT_POLL_INTERVAL = 0.25
 
-app = FastAPI(title="Value Investing RAG API", version="0.1.0")
+
+def _maybe_refresh_smart_money_on_startup() -> None:
+    """If enabled and the smart-money index is missing/stale, rebuild it in a
+    background thread (13Fs refile quarterly). Never blocks startup or raises."""
+    if not settings.smart_money_auto_refresh:
+        return
+    try:
+        idx = load_index()
+        if not index_is_stale(idx.get("refreshed_at", ""), settings.smart_money_stale_days):
+            return
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    def _bg() -> None:
+        try:
+            result = refresh_smart_money()
+            log_event("INFO", "smart_money_auto_refreshed",
+                      funds=result.get("funds"), rows=result.get("rows"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Startup smart-money refresh failed: {e}")
+
+    threading.Thread(target=_bg, daemon=True).start()
+    log_event("INFO", "smart_money_refresh_scheduled")
+
+
+@asynccontextmanager
+async def _lifespan(app: "FastAPI"):
+    # Startup: self-heal a stale superinvestor index without blocking readiness.
+    _maybe_refresh_smart_money_on_startup()
+    yield
+
+
+app = FastAPI(title="Value Investing RAG API", version="0.1.0", lifespan=_lifespan)
 
 # Request-ID middleware first so every downstream log carries the id.
 install_request_id_middleware(app)

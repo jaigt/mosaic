@@ -114,6 +114,17 @@ def test_refresh_builds_index_with_fake_company(tmp_path):
     assert own.positions[0].change == "added"   # 60 vs prior 50
 
 
+def test_index_is_stale():
+    import datetime as dt
+    from backend.holdings.superinvestors import index_is_stale
+    now = dt.datetime(2026, 6, 15, tzinfo=dt.timezone.utc)
+    assert index_is_stale("", 30, now) is True                    # never built
+    assert index_is_stale("garbage", 30, now) is True             # unparseable
+    assert index_is_stale("2026-06-10T00:00:00Z", 30, now) is False   # 5 days old
+    assert index_is_stale("2026-04-01T00:00:00Z", 30, now) is True    # >30 days
+    assert index_is_stale("2026-05-16T00:00:00Z", 30, now) is True    # exactly 30 days
+
+
 def test_refresh_skips_bad_fund(tmp_path):
     def boom(cik):
         raise RuntimeError("edgar down")

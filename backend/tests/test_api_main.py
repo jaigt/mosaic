@@ -135,6 +135,35 @@ def test_smart_money_endpoint(monkeypatch):
     assert body["positions"][0]["fund"] == "Buffett" and body["positions"][0]["change"] == "trimmed"
 
 
+def test_startup_refreshes_stale_index(monkeypatch):
+    """The startup hook kicks a background refresh when the index is stale."""
+    monkeypatch.setattr(main.settings, "smart_money_auto_refresh", True)
+    monkeypatch.setattr(main, "load_index", lambda: {"refreshed_at": ""})  # stale
+    called = threading.Event()
+    monkeypatch.setattr(main, "refresh_smart_money",
+                        lambda: called.set() or {"funds": 1, "rows": 1})
+    main._maybe_refresh_smart_money_on_startup()
+    assert called.wait(timeout=2.0), "stale index did not trigger a refresh"
+
+
+def test_startup_skips_fresh_index(monkeypatch):
+    monkeypatch.setattr(main.settings, "smart_money_auto_refresh", True)
+    monkeypatch.setattr(main, "load_index",
+                        lambda: {"refreshed_at": "2999-01-01T00:00:00Z"})  # fresh
+    called = {"n": 0}
+    monkeypatch.setattr(main, "refresh_smart_money", lambda: called.__setitem__("n", 1))
+    main._maybe_refresh_smart_money_on_startup()
+    time.sleep(0.1)
+    assert called["n"] == 0
+
+
+def test_startup_disabled_does_nothing(monkeypatch):
+    monkeypatch.setattr(main.settings, "smart_money_auto_refresh", False)
+    monkeypatch.setattr(main, "refresh_smart_money",
+                        lambda: pytest.fail("should not refresh when disabled"))
+    main._maybe_refresh_smart_money_on_startup()
+
+
 def test_smart_money_refresh_endpoint(monkeypatch):
     monkeypatch.setattr(main, "refresh_smart_money", lambda: {"funds": 3, "rows": 120, "errors": []})
     client = _client(monkeypatch)

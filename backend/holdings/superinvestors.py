@@ -12,6 +12,7 @@ by ticker. Per-ticker queries then read the cached index instantly.
 The change/index logic is PURE + unit-tested; the EDGAR fetch is isolated in
 ``refresh`` with an injectable company resolver. EDGAR-only — no API key/quota.
 """
+import datetime
 import json
 import logging
 import time
@@ -207,3 +208,17 @@ def funds_holding(ticker: str, index_path: Optional[Path] = None) -> TickerOwner
     """Query the cached index for tracked funds holding ``ticker``."""
     idx = load_index(index_path)
     return funds_holding_from_rows(ticker, idx.get("rows", []), idx.get("refreshed_at", ""))
+
+
+def index_is_stale(refreshed_at: str, stale_days: int = 30, now: Optional[datetime.datetime] = None) -> bool:
+    """Whether the index should be rebuilt. PURE. Missing/unparseable → stale."""
+    if not refreshed_at:
+        return True
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    try:
+        ts = datetime.datetime.strptime(refreshed_at, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=datetime.timezone.utc
+        )
+    except Exception:
+        return True
+    return (now - ts).days >= stale_days

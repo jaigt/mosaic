@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     enable_react_agent: bool = True
     agent_model: str = ""
     agent_max_steps: int = 5
+
+    # Smart-money (superinvestor 13F) index auto-refresh. On startup, if the
+    # cached index is missing or older than ``smart_money_stale_days``, the app
+    # rebuilds it in the background (13Fs refile quarterly, ~45 days after
+    # quarter-end). Keeps "which funds hold X" current without manual refreshes.
+    smart_money_auto_refresh: bool = True
+    smart_money_stale_days: int = 30
     # Use native provider function-calling for the ReAct loop (vs parsing JSON
     # actions from text). More reliable, but provider-specific (Gemini only so
     # far). Default OFF until broadly live-verified; text-ReAct is the proven
