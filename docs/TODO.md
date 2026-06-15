@@ -163,9 +163,19 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       embedding key/quota dependency.
 - [x] **Table-HTML cleanup → BeautifulSoup**; **eval set → 24 cases + flexible
       section matching**; **FE: responsive + a11y + bundle 731→78 kB**.
-- [ ] **NEXT options:** (a) upgrade ReAct to NATIVE provider function-calling
-      (more reliable than text-JSON; per-provider in `llm.py`); (b) a dedicated
-      `compare` tool + comparison charts; (c) Form 4 / 13F trackers.
+- [x] **Native Gemini function-calling for ReAct (opt-in)** — `GeminiToolSession`
+      in `llm.py`, `ReactAgent(native=True)`; `agent_native_tools` (default OFF).
+      Live-validated round-trip; convergence guard stops on no-new-evidence.
+      Text-ReAct stays the default until native stop-efficiency is fully tuned.
+- [x] **Multi-series comparison charts** (FE) + synthesis emits the multi-series
+      `<chart>` spec (type bar/line/area). Comparison is now functional E2E: the
+      ReAct loop auto-ingests each named company, then synthesizes a multi-series
+      chart.
+- [ ] **NEXT options:** (a) make native FC the default once stop-efficiency is
+      tuned + broadly verified; (b) Form 4 (insider) / 13F (institutional)
+      trackers — new EDGAR ingestion path + data model; (c) `period_of_report`
+      metadata column (P2 correctness, needs re-ingest); (d) durable/bounded
+      ingest task store (P3 ops).
 
 ### TEST-LATER (deferred on free-tier quota — DO THIS)
 - [ ] Re-run the clean embedding A/B (local-bge-large vs gemini-embedding-001)

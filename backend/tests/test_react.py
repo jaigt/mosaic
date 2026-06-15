@@ -210,6 +210,34 @@ def test_native_loop_with_fake_session():
     assert any(e["kind"] == "search" for e in events)
 
 
+def test_native_loop_stops_when_no_new_sources():
+    """Convergence guard: a search round that yields no NEW sources ends the loop
+    instead of burning the step budget."""
+    from backend.pipeline.llm import AgentTurn, ToolCall
+
+    class FakeSession:
+        def __init__(self, system, tools, model):
+            # Always asks to search again — only the guard should stop it.
+            self._search = AgentTurn(tool_calls=[ToolCall(name="search_filings", args={"query": "x"})])
+
+        def start(self, user_text):
+            return self._search
+
+        def respond(self, results):
+            return self._search
+
+    # Every search returns the SAME chunk → no new sources after round 1.
+    agent = ReactAgent(
+        generate_fn=None, retrieve_fn=lambda **kw: [_rc("dup")],
+        ingest_fn=lambda **kw: 0, list_corpus_fn=lambda: "x", model="gemini-2.5-flash",
+        max_steps=5, native=True, session_factory=FakeSession,
+    )
+    result = agent.run("q", [], {}, lambda e: None)
+    assert result.ready_reason == "answered"
+    assert result.steps == 2            # round 1 gathered "dup"; round 2 added nothing → stop
+    assert [c.chunk.chunk_id for c in result.sources] == ["dup"]
+
+
 def test_native_loop_handles_session_error():
     def boom_factory(system, tools, model):
         raise RuntimeError("SDK exploded")

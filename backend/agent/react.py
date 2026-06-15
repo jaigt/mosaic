@@ -245,6 +245,7 @@ class ReactAgent:
                 if not turn.tool_calls:
                     ready_reason = "answered"
                     break
+                before = len(sources_by_id)
                 results = []
                 for tc in turn.tool_calls:
                     obs = self._execute(Action(tool=tc.name, input=tc.args or {}), filters, on_event)
@@ -254,6 +255,13 @@ class ReactAgent:
                             sources_by_id[cid] = rc
                     self._last_retrieved = []
                     results.append((tc.name, obs))
+                # Convergence guard: if a round of search calls surfaced no NEW
+                # sources (the model is re-treading old ground), stop gathering
+                # rather than burn the remaining step budget.
+                searched = any(tc.name == "search_filings" for tc in turn.tool_calls)
+                if searched and len(sources_by_id) == before:
+                    ready_reason = "answered"
+                    break
                 if rounds >= self._max_steps:
                     break
                 turn = session.respond(results)
