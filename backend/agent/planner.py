@@ -83,20 +83,35 @@ class VerificationResult:
 
 
 _VERIFICATION_PROMPT = """\
-You are a meticulous fact-checker auditing a financial analyst's answer against \
-the SEC filing excerpts it was based on. Your only job is to catch claims or \
-numbers in the ANSWER that are NOT supported by the SOURCES.
+You are a careful fact-checker auditing a financial analyst's answer against SEC \
+filing excerpts. Catch claims that MATERIALLY CONTRADICT the SOURCES or are \
+clearly fabricated — do NOT nitpick formatting.
 
 Return ONLY a JSON object:
-{{"supported": true|false, "issues": ["short description of each unsupported or \
-contradicted claim"]}}
+{{"supported": true|false, "issues": ["short description of each genuinely \
+unsupported or contradicted claim"]}}
 
-- "supported" is true ONLY if every factual claim and number in the ANSWER is \
-backed by the SOURCES.
-- Do not flag general reasoning or well-known context; flag specific figures or \
-assertions that the SOURCES do not contain or that contradict them.
-- Keep each issue to one short sentence. If fully supported, return an empty \
-issues list.
+Treat these as SUPPORTED — do NOT flag them:
+- Unit conversions and rounding: "$209,586 million", "$209.6 billion", and \
+"$209.6B" are the SAME figure; "$416.16B" matches "$416,161 million".
+- Percentages, sums, differences, growth rates, or ratios correctly derived from \
+figures in the sources.
+- Rephrasing, summarizing, reordering, rounding, or citation-number/formatting \
+differences.
+- Reasonable, well-known general context.
+
+Flag a claim ONLY when:
+- A specific number directly CONTRADICTS the sources (a different value for the \
+same line item), OR
+- A specific, material figure or named fact in the ANSWER has no basis anywhere \
+in the SOURCES.
+
+The SOURCES may be a PARTIAL excerpt, so never flag a claim merely because you \
+don't see its source here — flag only a real contradiction or a clearly \
+fabricated specific. When in doubt, treat the claim as supported.
+
+Keep each issue to one short sentence. If nothing qualifies, return \
+{{"supported": true, "issues": []}}.
 
 SOURCES:
 {sources}
@@ -106,7 +121,7 @@ ANSWER:
 """
 
 
-def build_verification_prompt(answer: str, sources_text: str, source_limit: int = 8000) -> str:
+def build_verification_prompt(answer: str, sources_text: str, source_limit: int = 16000) -> str:
     """Build the critic prompt. PURE."""
     return _VERIFICATION_PROMPT.format(
         sources=sources_text[:source_limit],

@@ -101,6 +101,15 @@ def test_build_verification_prompt_truncates_sources():
     assert "x" * 101 not in prompt
 
 
+def test_verification_prompt_tolerates_units_and_partial_sources():
+    """Regression guard: the critic must be told that unit conversions/rounding
+    are NOT errors and that the sources may be a partial excerpt — this is what
+    stops spurious 'caveats' on correct answers (e.g. $209.6B vs $209,586M)."""
+    low = build_verification_prompt("a", "s").lower()
+    assert "million" in low and "billion" in low   # units explicitly equated
+    assert "partial" in low                          # truncation-aware
+
+
 # ── verify_answer wrapper ──────────────────────────────────────────────────────
 
 def test_verify_answer_empty_is_unknown():
