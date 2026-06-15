@@ -8,8 +8,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""     # Optional — needed for gpt-* / o* models
     sec_user_agent: str
     lancedb_path: str = "./data/lancedb"
-    fast_model: str = "gemini-3.1-flash-lite"
-    synthesis_model: str = "gemini-3.5-flash"
+    # Stable GA models (verified live 2026-06-15). NOT *-preview: this project
+    # was burned before by pinning retired preview names (see docs round 3).
+    fast_model: str = "gemini-2.5-flash-lite"
+    synthesis_model: str = "gemini-2.5-flash"
     embedding_model: str = "gemini-embedding-001"
     # Allowed browser origins for CORS. Comma-separated in .env; defaults to the
     # Vite dev server. Set to your deployed frontend origin in production.
