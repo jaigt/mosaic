@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     enable_react_agent: bool = True
     agent_model: str = ""
     agent_max_steps: int = 5
+    # Use native provider function-calling for the ReAct loop (vs parsing JSON
+    # actions from text). More reliable, but provider-specific (Gemini only so
+    # far). Default OFF until broadly live-verified; text-ReAct is the proven
+    # default and is used automatically for providers without native support.
+    agent_native_tools: bool = False
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",

@@ -178,6 +178,52 @@ def test_generate_failure_ends_gracefully():
     assert result.sources == []
 
 
+def test_native_loop_with_fake_session():
+    """Native mode: a fake tool session drives search → (text = done), sources
+    accumulate, no JSON parsing involved."""
+    from backend.pipeline.llm import AgentTurn, ToolCall
+
+    class FakeSession:
+        def __init__(self, system, tools, model):
+            assert any(t.name == "search_filings" for t in tools)
+            self._turns = iter([
+                AgentTurn(tool_calls=[ToolCall(name="search_filings", args={"query": "AAPL revenue", "ticker": "AAPL"})]),
+                AgentTurn(text="I have enough."),   # no tool calls → done
+            ])
+
+        def start(self, user_text):
+            return next(self._turns)
+
+        def respond(self, results):
+            assert results and results[0][0] == "search_filings"
+            return next(self._turns)
+
+    events = []
+    agent = ReactAgent(
+        generate_fn=None, retrieve_fn=lambda **kw: [_rc("c1"), _rc("c2")],
+        ingest_fn=lambda **kw: 0, list_corpus_fn=lambda: "x", model="gemini-2.5-flash",
+        native=True, session_factory=FakeSession,
+    )
+    result = agent.run("What was AAPL revenue?", [], {}, events.append)
+    assert result.ready_reason == "answered"
+    assert [c.chunk.chunk_id for c in result.sources] == ["c1", "c2"]
+    assert any(e["kind"] == "search" for e in events)
+
+
+def test_native_loop_handles_session_error():
+    def boom_factory(system, tools, model):
+        raise RuntimeError("SDK exploded")
+
+    agent = ReactAgent(
+        generate_fn=None, retrieve_fn=lambda **kw: [], ingest_fn=lambda **kw: 0,
+        list_corpus_fn=lambda: "x", model="gemini-2.5-flash",
+        native=True, session_factory=boom_factory,
+    )
+    result = agent.run("q", [], {}, lambda e: None)
+    assert result.ready_reason == "parse_error"
+    assert result.sources == []
+
+
 def test_explicit_filters_seed_search_when_model_omits():
     seen = {}
 

@@ -29,7 +29,7 @@ from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
 from backend.agent import ReactAgent, plan_auto_ingest, verify_answer
 from backend.pipeline.ingest import ingest_filing
-from backend.pipeline.llm import generate, stream_generate
+from backend.pipeline.llm import generate, stream_generate, supports_native_tools
 from backend.pipeline.store import get_table
 from backend.retrieval.query_parser import extract_filters
 from backend.retrieval.reformulate import condense_query
@@ -69,10 +69,11 @@ Rules:
 
 Generative UI (Financial Charts):
 - If the user asks for a comparison of numbers (e.g., revenue over years, net income across tickers) and you have the data, you MUST include a chart in your response.
-- Use the following format for charts:
+- Single series (one metric over time) — use a "value" key:
 <chart>
 {
-  "title": "Comparison of Revenue (Billions)",
+  "type": "bar",
+  "title": "Revenue (Billions)",
   "data": [
     {"name": "2022", "value": 117.1},
     {"name": "2023", "value": 125.4},
@@ -80,7 +81,20 @@ Generative UI (Financial Charts):
   ]
 }
 </chart>
-- Always continue with your textual analysis AFTER the chart tag if needed.
+- Multiple series (compare companies/metrics) — one key per series on each row, and list the series:
+<chart>
+{
+  "type": "line",
+  "title": "Revenue Comparison (Billions)",
+  "data": [
+    {"name": "2023", "AAPL": 383.3, "MSFT": 211.9},
+    {"name": "2024", "AAPL": 391.0, "MSFT": 245.1}
+  ],
+  "series": ["AAPL", "MSFT"]
+}
+</chart>
+- "type" may be "bar" (default), "line", or "area". Prefer "line"/"area" for trends over time, "bar" for point-in-time comparisons.
+- Use values consistent in units; put the unit in the title. Always continue with your textual analysis AFTER the chart tag if needed.
 """
 
 
@@ -380,6 +394,7 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                 "year": request.year,
                 "document_type": request.document_type,
             }
+            native = settings.agent_native_tools and supports_native_tools(_agent_model())
             agent = ReactAgent(
                 generate_fn=generate,
                 retrieve_fn=retrieve,
@@ -387,6 +402,7 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                 list_corpus_fn=_corpus_summary,
                 model=_agent_model(),
                 max_steps=settings.agent_max_steps,
+                native=native,
             )
             holder: dict = {}
             async for ev in _react_gather(

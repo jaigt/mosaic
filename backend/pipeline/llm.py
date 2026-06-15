@@ -12,11 +12,120 @@ All three providers are optional at import time — a missing API key only raise
 an error if you actually try to call that provider.
 """
 import logging
-from typing import Generator
+from dataclasses import dataclass, field
+from typing import Generator, Optional
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# ── Native tool / function calling ────────────────────────────────────────────
+# A provider-neutral surface the ReAct agent can use when the model supports
+# native function-calling (more reliable than parsing JSON out of free text).
+# Only Gemini is implemented today; other providers fall back to text-ReAct.
+
+@dataclass
+class ToolSpec:
+    """A tool the model may call. ``parameters`` is a minimal JSON-schema-ish
+    dict: {"properties": {name: {"type": "string"|"integer", "description": ...}},
+    "required": [...]}."""
+
+    name: str
+    description: str
+    parameters: dict = field(default_factory=dict)
+
+
+@dataclass
+class ToolCall:
+    name: str
+    args: dict = field(default_factory=dict)
+
+
+@dataclass
+class AgentTurn:
+    """One model turn: either tool calls to execute, or final text (gather done)."""
+
+    text: Optional[str] = None
+    tool_calls: list = field(default_factory=list)
+
+
+def supports_native_tools(model: str) -> bool:
+    """Whether ``model`` has a native function-calling path here (Gemini only)."""
+    return model.startswith("gemini-")
+
+
+def _to_gemini_schema(parameters: dict):
+    """Build a Gemini types.Schema (OBJECT) from a minimal param dict."""
+    from google.genai import types
+
+    _TYPE = {"string": "STRING", "integer": "INTEGER", "number": "NUMBER", "boolean": "BOOLEAN"}
+    props = {}
+    for pname, pspec in (parameters.get("properties") or {}).items():
+        props[pname] = types.Schema(
+            type=_TYPE.get(pspec.get("type", "string"), "STRING"),
+            description=pspec.get("description", ""),
+        )
+    return types.Schema(type="OBJECT", properties=props, required=parameters.get("required", []))
+
+
+class GeminiToolSession:
+    """Stateful native function-calling session for Gemini.
+
+    Threads the multi-turn ``contents`` list across the loop: ``start`` sends the
+    user question, each ``respond`` sends back tool results, and both return an
+    :class:`AgentTurn` (tool calls to run, or final text meaning "done gathering").
+    """
+
+    def __init__(self, system: str, tools: list, model: str):
+        from google import genai
+        from google.genai import types
+
+        self._types = types
+        self._client = genai.Client(api_key=settings.google_api_key)
+        self._model = model
+        decls = [
+            types.FunctionDeclaration(
+                name=t.name, description=t.description, parameters=_to_gemini_schema(t.parameters)
+            )
+            for t in tools
+        ]
+        self._config = types.GenerateContentConfig(
+            system_instruction=system,
+            tools=[types.Tool(function_declarations=decls)],
+        )
+        self._contents: list = []
+
+    def _send(self) -> AgentTurn:
+        resp = self._client.models.generate_content(
+            model=self._model, contents=self._contents, config=self._config
+        )
+        cand = resp.candidates[0]
+        # Record the model turn so the next request carries the full history.
+        self._contents.append(cand.content)
+        calls, texts = [], []
+        for part in (cand.content.parts or []):
+            fc = getattr(part, "function_call", None)
+            if fc is not None:
+                calls.append(ToolCall(name=fc.name, args=dict(fc.args or {})))
+            elif getattr(part, "text", None):
+                texts.append(part.text)
+        return AgentTurn(text=("".join(texts) or None), tool_calls=calls)
+
+    def start(self, user_text: str) -> AgentTurn:
+        self._contents.append(
+            self._types.Content(role="user", parts=[self._types.Part(text=user_text)])
+        )
+        return self._send()
+
+    def respond(self, results: list) -> AgentTurn:
+        """``results`` is a list of (tool_name, result_str)."""
+        parts = [
+            self._types.Part.from_function_response(name=name, response={"result": result})
+            for name, result in results
+        ]
+        self._contents.append(self._types.Content(role="user", parts=parts))
+        return self._send()
 
 
 def _provider(model: str) -> str:

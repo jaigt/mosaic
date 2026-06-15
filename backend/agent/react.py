@@ -23,7 +23,54 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from backend.pipeline.llm import ToolSpec
+
 logger = logging.getLogger(__name__)
+
+# Native function-calling tool declarations (used when ``native=True``). Mirror
+# the text-mode tools, minus "answer": in native mode the model signals it's done
+# by returning text instead of a tool call.
+_TOOL_SPECS = [
+    ToolSpec(
+        name="search_filings",
+        description="Semantic search over the SEC filing corpus. Use focused queries; set ticker when the question names a company.",
+        parameters={
+            "properties": {
+                "query": {"type": "string", "description": "what to search for"},
+                "ticker": {"type": "string", "description": "restrict to this ticker"},
+                "year": {"type": "integer", "description": "restrict to this filing year"},
+                "document_type": {"type": "string", "description": "10-K or 10-Q"},
+            },
+            "required": ["query"],
+        },
+    ),
+    ToolSpec(
+        name="ingest_filing",
+        description="Fetch a filing from SEC EDGAR into the corpus so it can be searched. Use when the corpus lacks a company the user asked about.",
+        parameters={
+            "properties": {
+                "ticker": {"type": "string", "description": "company ticker"},
+                "document_type": {"type": "string", "description": "10-K or 10-Q"},
+                "year": {"type": "integer", "description": "filing year (optional; latest if omitted)"},
+            },
+            "required": ["ticker"],
+        },
+    ),
+    ToolSpec(
+        name="list_corpus",
+        description="List which filings the corpus currently contains.",
+        parameters={"properties": {}, "required": []},
+    ),
+]
+
+_NATIVE_SYSTEM_PROMPT = """\
+You are an autonomous value-investing analyst working over a corpus of SEC
+filings (10-K / 10-Q). Gather evidence by calling the provided tools — search
+the corpus, ingest a missing filing from EDGAR then search it, or list what the
+corpus holds. Gather from multiple companies/sections when the question compares
+or spans them. The final written answer is produced separately from the evidence
+you gather, so when you have enough, simply reply with a brief confirmation
+(no tool call) — do NOT write the full answer yourself."""
 
 # Hard cap on tool steps so a confused model can't loop forever (and burn quota).
 MAX_STEPS = 5
@@ -151,12 +198,14 @@ class ReactAgent:
 
     def __init__(
         self,
-        generate_fn: Callable[[str, str], str],
+        generate_fn: Optional[Callable[[str, str], str]],
         retrieve_fn: Callable,
         ingest_fn: Callable,
         list_corpus_fn: Callable[[], str],
         model: str,
         max_steps: int = MAX_STEPS,
+        native: bool = False,
+        session_factory: Optional[Callable] = None,
     ):
         self._generate = generate_fn
         self._retrieve = retrieve_fn
@@ -164,8 +213,62 @@ class ReactAgent:
         self._list_corpus = list_corpus_fn
         self._model = model
         self._max_steps = max_steps
+        # Native function-calling mode (more reliable than parsing JSON from
+        # text). ``session_factory(system, tool_specs, model)`` builds a tool
+        # session; defaults to the Gemini one but is injectable for tests.
+        self._native = native
+        self._session_factory = session_factory
 
     def run(self, message: str, history, filters: dict, on_event: Callable[[dict], None]) -> GatherResult:
+        """Dispatch to the native function-calling loop or the text-ReAct loop."""
+        if self._native:
+            return self._run_native(message, history, filters, on_event)
+        return self._run_text(message, history, filters, on_event)
+
+    def _run_native(self, message: str, history, filters: dict, on_event: Callable[[dict], None]) -> GatherResult:
+        """Evidence-gathering via native provider function-calling."""
+        factory = self._session_factory
+        if factory is None:
+            from backend.pipeline.llm import GeminiToolSession  # noqa: PLC0415
+            factory = GeminiToolSession
+        system = _NATIVE_SYSTEM_PROMPT
+        hist = _format_history(history)
+        user_text = (f"CONVERSATION SO FAR:\n{hist}\n\n" if hist else "") + f"USER QUESTION: {message}"
+
+        sources_by_id: dict = {}
+        ready_reason = "max_steps"
+        rounds = 0
+        try:
+            session = factory(system, _TOOL_SPECS, self._model)
+            turn = session.start(user_text)
+            for rounds in range(1, self._max_steps + 1):
+                if not turn.tool_calls:
+                    ready_reason = "answered"
+                    break
+                results = []
+                for tc in turn.tool_calls:
+                    obs = self._execute(Action(tool=tc.name, input=tc.args or {}), filters, on_event)
+                    for rc in getattr(self, "_last_retrieved", []):
+                        cid = getattr(rc.chunk, "chunk_id", None)
+                        if cid and cid not in sources_by_id:
+                            sources_by_id[cid] = rc
+                    self._last_retrieved = []
+                    results.append((tc.name, obs))
+                if rounds >= self._max_steps:
+                    break
+                turn = session.respond(results)
+        except Exception as e:  # noqa: BLE001 — answer on whatever was gathered
+            logger.warning(f"Native tool loop failed: {e}")
+            ready_reason = "parse_error"
+
+        return GatherResult(
+            sources=list(sources_by_id.values()),
+            steps=rounds,
+            transcript=[],
+            ready_reason=ready_reason,
+        )
+
+    def _run_text(self, message: str, history, filters: dict, on_event: Callable[[dict], None]) -> GatherResult:
         """Run the loop. ``filters`` carries explicit request scoping
         (ticker/year/document_type) that seeds search/ingest when the model omits
         them. ``on_event`` is called with an agent-step dict per action."""
