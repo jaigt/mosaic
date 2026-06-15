@@ -14,6 +14,10 @@ google-genai>=1.0.0
 anthropic>=0.40.0
 openai>=1.50.0
 
+# Local (offline) embeddings — removes the embedding API-key/quota dependency.
+# Routed by the "local-*" EMBEDDING_MODEL prefix (e.g. local-bge-large). CPU/ONNX.
+fastembed>=0.8.0
+
 # API layer
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0

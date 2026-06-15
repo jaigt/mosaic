@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     # was burned before by pinning retired preview names (see docs round 3).
     fast_model: str = "gemini-2.5-flash-lite"
     synthesis_model: str = "gemini-2.5-flash"
-    embedding_model: str = "gemini-embedding-001"
+    # Default to LOCAL embeddings (fastembed/ONNX, "local-*" prefix): ingest +
+    # retrieval then need no embedding key and hit no free-tier quota wall (only
+    # synthesis/fast use a key). Swap to gemini-embedding-001 / text-embedding-3-*
+    # for a hosted embedder — changing the dimension requires a re-ingest.
+    embedding_model: str = "local-bge-large"
     # Allowed browser origins for CORS. Comma-separated in .env; defaults to the
     # Vite dev server. Set to your deployed frontend origin in production.
     cors_allow_origins: list[str] = ["http://localhost:5173"]
