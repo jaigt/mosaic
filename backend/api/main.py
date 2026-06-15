@@ -27,9 +27,9 @@ from backend.api.observability import (
 from backend.api.security import enforce_rate_limit, require_api_key
 from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
-from backend.agent import plan_auto_ingest, verify_answer
+from backend.agent import ReactAgent, plan_auto_ingest, verify_answer
 from backend.pipeline.ingest import ingest_filing
-from backend.pipeline.llm import stream_generate
+from backend.pipeline.llm import generate, stream_generate
 from backend.pipeline.store import get_table
 from backend.retrieval.query_parser import extract_filters
 from backend.retrieval.reformulate import condense_query
@@ -297,6 +297,65 @@ async def _client_gone(http_request) -> bool:
         return False
 
 
+def _agent_model() -> str:
+    """Model that drives the ReAct loop's reasoning (falls back to synthesis)."""
+    return settings.agent_model or settings.synthesis_model
+
+
+def _corpus_summary() -> str:
+    """Compact, model-facing listing of what filings the corpus holds.
+
+    Used by the ReAct ``list_corpus`` tool. Best-effort: returns a short message
+    on any error rather than raising into the agent loop.
+    """
+    try:
+        table = get_table()
+        n = table.count_rows()
+        if not n:
+            return "The corpus is currently empty — ingest a filing first."
+        df = (
+            table.search().select(["ticker", "document_type", "filing_year"]).limit(n).to_pandas()
+        )
+        counts = (
+            df.groupby(["ticker", "document_type", "filing_year"]).size().reset_index(name="n")
+        )
+        parts = [
+            f"{r.ticker} {r.document_type} {int(r.filing_year)} ({int(r.n)} chunks)"
+            for r in counts.itertuples()
+        ]
+        return "Corpus contains: " + "; ".join(parts)
+    except Exception as e:  # noqa: BLE001
+        return f"Could not read the corpus: {e}"
+
+
+async def _react_gather(agent: ReactAgent, message: str, history, filters: dict, holder: dict):
+    """Run the (sync) ReAct gather loop in a worker thread, yielding each
+    agent-step event as it happens via a thread→event-loop queue bridge. The
+    final GatherResult (or the raised error) is stashed in ``holder``."""
+    loop = asyncio.get_event_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    _DONE = object()
+
+    def on_event(event: dict) -> None:
+        loop.call_soon_threadsafe(q.put_nowait, event)
+
+    def work() -> None:
+        try:
+            holder["result"] = agent.run(message, history, filters, on_event)
+        except Exception as e:  # noqa: BLE001 — surfaced to the caller via holder
+            holder["error"] = e
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, _DONE)
+
+    task = loop.run_in_executor(None, work)
+    while True:
+        item = await q.get()
+        if item is _DONE:
+            break
+        yield item
+    await task
+
+
 async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerator[str, None]:
     request_id = get_request_id()
 
@@ -305,62 +364,85 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
         return f"data: {payload}\n\n"
 
     try:
-        # Step 1: Retrieval.
-        # For follow-up turns, condense the (possibly elliptical) message into a
-        # standalone search query using the conversation history. This only
-        # affects what we retrieve — the original message is still used for
-        # synthesis and history formatting below. condense_query degrades
-        # gracefully to the original message if the heuristic skips it or the
-        # LLM call fails, so retrieval is never broken by reformulation.
-        yield sse("status", "Reading your question...")
-        search_query = await asyncio.to_thread(
-            condense_query, request.conversation_history, request.message
-        )
+        # ── Step 1: Gather evidence ──────────────────────────────────────────
+        # Two strategies (config-selected):
+        #   * ReAct agent — a model-driven tool loop (search/ingest/list over
+        #     multiple steps). The model writes its own search queries and
+        #     decides when to fetch a missing filing.
+        #   * Fixed pipeline (round 5) — condense → retrieve → optional one
+        #     auto-ingest → re-retrieve. Simpler, fewer LLM calls.
+        # Both produce ``chunks`` (a list of RetrievedChunk) and stream their own
+        # status / agent_step events, then converge on the shared synthesis tail.
+        if settings.enable_react_agent:
+            yield sse("status", "Planning the analysis...")
+            filters = {
+                "ticker": request.ticker,
+                "year": request.year,
+                "document_type": request.document_type,
+            }
+            agent = ReactAgent(
+                generate_fn=generate,
+                retrieve_fn=retrieve,
+                ingest_fn=ingest_filing,
+                list_corpus_fn=_corpus_summary,
+                model=_agent_model(),
+                max_steps=settings.agent_max_steps,
+            )
+            holder: dict = {}
+            async for ev in _react_gather(
+                agent, request.message, request.conversation_history, filters, holder
+            ):
+                yield sse("agent_step", ev)
+            if "error" in holder:
+                raise holder["error"]
+            result = holder.get("result")
+            chunks = result.sources if result is not None else []
+        else:
+            # Fixed pipeline. condense_query degrades gracefully to the original
+            # message; extract_filters returns {} on failure — retrieval is never
+            # broken by a bad/absent key.
+            yield sse("status", "Reading your question...")
+            search_query = await asyncio.to_thread(
+                condense_query, request.conversation_history, request.message
+            )
+            auto_filters = await asyncio.to_thread(extract_filters, search_query)
+            eff_ticker = request.ticker or auto_filters.get("ticker")
+            eff_year = request.year or auto_filters.get("year")
+            eff_doc_type = request.document_type or auto_filters.get("document_type")
 
-        # Resolve the target filing once. Explicit request filters always win
-        # over anything inferred from the query text; the inferred values feed
-        # both retrieval pre-filtering and the auto-ingest decision below.
-        auto_filters = await asyncio.to_thread(extract_filters, search_query)
-        eff_ticker = request.ticker or auto_filters.get("ticker")
-        eff_year = request.year or auto_filters.get("year")
-        eff_doc_type = request.document_type or auto_filters.get("document_type")
+            yield sse("status", "Searching the filing corpus...")
+            chunks = await asyncio.to_thread(
+                retrieve, query=search_query, top_k=5,
+                ticker=eff_ticker, year=eff_year, document_type=eff_doc_type,
+            )
 
-        yield sse("status", "Searching the filing corpus...")
-        chunks = await asyncio.to_thread(
-            retrieve, query=search_query, top_k=5,
-            ticker=eff_ticker, year=eff_year, document_type=eff_doc_type,
-        )
-
-        # ── Corpus autonomy: fetch a missing filing on demand ────────────────
-        # If the user named a ticker the retrieval didn't surface, go get it from
-        # EDGAR mid-answer and re-search — instead of dead-ending on "ingest a
-        # filing first". This is the headline agent behaviour.
-        if settings.enable_auto_ingest:
-            plan = plan_auto_ingest(eff_ticker, eff_doc_type, eff_year, chunks)
-            if plan is not None:
-                yield sse("agent_step", {
-                    "kind": "ingest",
-                    "label": f"No {plan.label} in the corpus yet — fetching it from SEC EDGAR…",
-                })
-                try:
-                    await asyncio.to_thread(
-                        ingest_filing, ticker=plan.ticker,
-                        document_type=plan.document_type, year=plan.year,
-                    )
+            # Corpus autonomy: fetch a missing filing on demand, then re-search.
+            if settings.enable_auto_ingest:
+                plan = plan_auto_ingest(eff_ticker, eff_doc_type, eff_year, chunks)
+                if plan is not None:
                     yield sse("agent_step", {
-                        "kind": "retry_search",
-                        "label": f"Ingested {plan.label}. Re-searching…",
+                        "kind": "ingest",
+                        "label": f"No {plan.label} in the corpus yet — fetching it from SEC EDGAR…",
                     })
-                    chunks = await asyncio.to_thread(
-                        retrieve, query=search_query, top_k=5,
-                        ticker=eff_ticker, year=eff_year, document_type=eff_doc_type,
-                    )
-                except Exception as e:  # noqa: BLE001 — surfaced to the user as a step
-                    logger.warning(f"Auto-ingest failed for {plan.label}: {e}")
-                    yield sse("agent_step", {
-                        "kind": "ingest_failed",
-                        "label": f"Couldn't fetch {plan.label} from EDGAR ({e}).",
-                    })
+                    try:
+                        await asyncio.to_thread(
+                            ingest_filing, ticker=plan.ticker,
+                            document_type=plan.document_type, year=plan.year,
+                        )
+                        yield sse("agent_step", {
+                            "kind": "retry_search",
+                            "label": f"Ingested {plan.label}. Re-searching…",
+                        })
+                        chunks = await asyncio.to_thread(
+                            retrieve, query=search_query, top_k=5,
+                            ticker=eff_ticker, year=eff_year, document_type=eff_doc_type,
+                        )
+                    except Exception as e:  # noqa: BLE001 — surfaced as a step
+                        logger.warning(f"Auto-ingest failed for {plan.label}: {e}")
+                        yield sse("agent_step", {
+                            "kind": "ingest_failed",
+                            "label": f"Couldn't fetch {plan.label} from EDGAR ({e}).",
+                        })
 
         if not chunks:
             yield sse("chunk", "I couldn't find relevant SEC filing data for your query, "

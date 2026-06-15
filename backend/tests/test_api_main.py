@@ -109,6 +109,7 @@ class _FakeChunk:
     def __init__(self):
         from types import SimpleNamespace
         self.chunk = SimpleNamespace(
+            chunk_id="AAPL_10-K_2024_FY_00000",
             ticker="AAPL", filing_year=2024, filing_quarter="FY",
             sec_item_section="Item 7", chunk_type="text",
             text_content="t", raw_payload="r", document_type="10-K",
@@ -120,6 +121,7 @@ def test_producer_stops_when_client_disconnects(monkeypatch):
     """When the request reports disconnected, the sync producer thread must stop
     pumping tokens (it observes the cooperative stop flag) instead of running the
     full paid generation to completion."""
+    monkeypatch.setattr(main.settings, "enable_react_agent", False)
     monkeypatch.setattr(
         main, "retrieve", lambda **kw: [_FakeChunk()]
     )
@@ -180,6 +182,7 @@ def test_synthesis_error_is_surfaced_to_client(monkeypatch):
     """An exception inside the synthesis producer (bad API key, retired model,
     provider outage) must reach the client as an SSE error event — not end the
     stream silently with an empty answer."""
+    monkeypatch.setattr(main.settings, "enable_react_agent", False)
     monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])
     monkeypatch.setattr(main, "extract_filters", lambda q: {})
 
@@ -241,7 +244,11 @@ class _AlwaysConnected:
 
 
 def _stub_agent_llm(monkeypatch, *, filters=None, verification_status="supported"):
-    """Stub the LLM-backed agent steps so the chat path makes no network call."""
+    """Stub the LLM-backed agent steps so the chat path makes no network call.
+
+    These exercise the FIXED (round-5) pipeline, so pin the ReAct agent off; the
+    ReAct path is covered separately (it mocks ``generate`` to drive the loop)."""
+    monkeypatch.setattr(main.settings, "enable_react_agent", False)
     monkeypatch.setattr(main, "extract_filters", lambda q: dict(filters or {}))
     from backend.agent.planner import VerificationResult
     monkeypatch.setattr(
@@ -305,6 +312,70 @@ def test_chat_auto_ingests_missing_ticker(monkeypatch):
     kinds = [s["kind"] for s in steps]
     assert "ingest" in kinds and "retry_search" in kinds
     assert [e for e in events if e["type"] == "sources"]  # answered after ingest
+
+
+def test_chat_react_path_streams_steps_and_synthesizes(monkeypatch):
+    """With the ReAct agent ON (the default), the chat drives a tool loop:
+    the scripted model searches then answers, agent_step events stream, and the
+    accumulated sources feed the shared synthesis + verification tail."""
+    monkeypatch.setattr(main.settings, "enable_react_agent", True)
+    import json as _json
+
+    # Scripted ReAct model: search once, then answer.
+    actions = iter([
+        _json.dumps({"tool": "search_filings", "input": {"query": "AAPL revenue", "ticker": "AAPL"}}),
+        _json.dumps({"tool": "answer", "input": {}}),
+    ])
+    monkeypatch.setattr(main, "generate", lambda prompt, model: next(actions))
+    monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])
+    from backend.agent.planner import VerificationResult
+    monkeypatch.setattr(main, "verify_answer", lambda a, s, **k: VerificationResult(status="supported"))
+    monkeypatch.setattr(main, "stream_generate", lambda p, model: iter(["Apple ", "revenue."]))
+
+    events = _events(ChatRequest(message="What was AAPL revenue?"), _AlwaysConnected())
+    types = [e["type"] for e in events]
+    steps = [e["data"] for e in events if e["type"] == "agent_step"]
+    assert any(s["kind"] == "search" for s in steps)     # tool loop ran
+    assert "chunk" in types and "sources" in types and "verification" in types
+    assert types[-1] == "done"
+    answer = "".join(e["data"] for e in events if e["type"] == "chunk")
+    assert answer == "Apple revenue."
+
+
+def test_chat_react_auto_ingests_missing_ticker(monkeypatch):
+    """ReAct path: model searches (empty), ingests the missing filing, searches
+    again (now found), answers — streaming ingest agent_step events."""
+    monkeypatch.setattr(main.settings, "enable_react_agent", True)
+    import json as _json
+    actions = iter([
+        _json.dumps({"tool": "search_filings", "input": {"query": "NVDA", "ticker": "NVDA"}}),
+        _json.dumps({"tool": "ingest_filing", "input": {"ticker": "NVDA"}}),
+        _json.dumps({"tool": "search_filings", "input": {"query": "NVDA", "ticker": "NVDA"}}),
+        _json.dumps({"tool": "answer", "input": {}}),
+    ])
+    n_search = {"n": 0}
+
+    def fake_retrieve(**kw):
+        n_search["n"] += 1
+        if n_search["n"] == 1:
+            return []
+        nv = _FakeChunk()
+        nv.chunk.ticker = "NVDA"
+        return [nv]
+
+    ingests = []
+    monkeypatch.setattr(main, "generate", lambda prompt, model: next(actions))
+    monkeypatch.setattr(main, "retrieve", fake_retrieve)
+    monkeypatch.setattr(main, "ingest_filing", lambda ticker, document_type, year, on_progress=None: ingests.append(ticker) or 7)
+    from backend.agent.planner import VerificationResult
+    monkeypatch.setattr(main, "verify_answer", lambda a, s, **k: VerificationResult(status="supported"))
+    monkeypatch.setattr(main, "stream_generate", lambda p, model: iter(["ok"]))
+
+    events = _events(ChatRequest(message="How is NVDA doing?"), _AlwaysConnected())
+    kinds = [e["data"]["kind"] for e in events if e["type"] == "agent_step"]
+    assert ingests == ["NVDA"]
+    assert "ingest" in kinds and "ingest_done" in kinds
+    assert [e for e in events if e["type"] == "sources"]
 
 
 def test_chat_auto_ingest_can_be_disabled(monkeypatch):

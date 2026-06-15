@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     enable_auto_ingest: bool = True
     enable_self_verification: bool = True
 
+    # Multi-tool ReAct agent: when on, chat runs a model-driven tool loop
+    # (search / ingest / list_corpus over multiple steps) to gather evidence
+    # before synthesizing — generalizing the fixed auto-ingest pipeline above.
+    # When off, the fixed round-5 pipeline is used. ``agent_model`` is the model
+    # that drives the loop's reasoning; empty = fall back to ``synthesis_model``.
+    enable_react_agent: bool = True
+    agent_model: str = ""
+    agent_max_steps: int = 5
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",
         env_file_encoding="utf-8",

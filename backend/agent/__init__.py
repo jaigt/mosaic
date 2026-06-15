@@ -21,6 +21,13 @@ from backend.agent.planner import (
     parse_verification,
     verify_answer,
 )
+from backend.agent.react import (
+    Action,
+    GatherResult,
+    ReactAgent,
+    build_system_prompt,
+    parse_action,
+)
 
 __all__ = [
     "IngestPlan",
@@ -29,4 +36,10 @@ __all__ = [
     "build_verification_prompt",
     "parse_verification",
     "verify_answer",
+    # ReAct multi-tool loop
+    "Action",
+    "GatherResult",
+    "ReactAgent",
+    "build_system_prompt",
+    "parse_action",
 ]
