@@ -7,8 +7,10 @@ network, no LLM — so they unit-test without an API key. The live runner that
 actually calls ``retrieve`` lives in ``harness.py``.
 
 A retrieved item is considered relevant to a case when its chunk's ticker
-matches and (if the case specifies them) the document_type, year, and a
-case-insensitive substring of the section all match.
+matches and (if the case specifies them) the document_type, year, and the
+section all match. Section matching is satisfied when the chunk's section
+contains ANY of the case's accepted substrings (case-insensitive) — see
+``section_any_of`` / ``section_contains``.
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -16,13 +18,31 @@ from typing import Optional
 
 @dataclass
 class EvalCase:
-    """One labelled retrieval expectation."""
+    """One labelled retrieval expectation.
+
+    Section matching accepts a *list* of substrings (``section_any_of``): a
+    chunk's section qualifies if it contains any of them (case-insensitive).
+    Real filings often answer the same question from different sections (a
+    revenue figure lives in the Income Statement *and* is discussed in MD&A),
+    so a single rigid label produces false misses. ``section_contains`` remains
+    as a single-substring shorthand and is folded into ``section_any_of``.
+    """
 
     query: str
     ticker: str
-    section_contains: Optional[str] = None   # substring of sec_item_section
-    doc_type: Optional[str] = None           # "10-K" | "10-Q" | ...
+    section_contains: Optional[str] = None      # single-substring shorthand
+    doc_type: Optional[str] = None              # "10-K" | "10-Q" | ...
     year: Optional[int] = None
+    section_any_of: Optional[list[str]] = None  # any-of substrings of section
+
+    def accepted_sections(self) -> list[str]:
+        """All section substrings that satisfy this case (deduped, non-empty)."""
+        out: list[str] = []
+        if self.section_contains:
+            out.append(self.section_contains)
+        if self.section_any_of:
+            out.extend(self.section_any_of)
+        return [s for s in out if s]
 
     @classmethod
     def from_dict(cls, d: dict) -> "EvalCase":
@@ -32,6 +52,7 @@ class EvalCase:
             section_contains=d.get("section_contains"),
             doc_type=d.get("doc_type"),
             year=d.get("year"),
+            section_any_of=d.get("section_any_of"),
         )
 
 
@@ -43,9 +64,10 @@ def case_matches(case: EvalCase, chunk) -> bool:
         return False
     if case.year and getattr(chunk, "filing_year", None) != case.year:
         return False
-    if case.section_contains:
+    accepted = case.accepted_sections()
+    if accepted:
         section = (getattr(chunk, "sec_item_section", "") or "").lower()
-        if case.section_contains.lower() not in section:
+        if not any(s.lower() in section for s in accepted):
             return False
     return True
 

@@ -49,6 +49,57 @@ def test_case_matches_doc_type_and_year():
     assert not case_matches(case, _chunk("AAPL", doc_type="10-Q", year=2024))
 
 
+def test_case_matches_section_any_of_matches_any():
+    case = EvalCase(
+        query="q", ticker="AAPL",
+        section_any_of=["Income Statement", "MD&A", "Management"],
+    )
+    # Matches the primary statement section...
+    assert case_matches(case, _chunk("AAPL", section="Consolidated Income Statement"))
+    # ...and the narrative section where the answer also legitimately lives.
+    assert case_matches(case, _chunk("AAPL", section="Item 7: MD&A"))
+    assert case_matches(case, _chunk("AAPL", section="Management Discussion"))
+
+
+def test_case_matches_section_any_of_rejects_none_match():
+    case = EvalCase(query="q", ticker="AAPL", section_any_of=["Income Statement", "MD&A"])
+    assert not case_matches(case, _chunk("AAPL", section="Item 1A: Risk Factors"))
+
+
+def test_case_matches_section_any_of_case_insensitive():
+    case = EvalCase(query="q", ticker="AAPL", section_any_of=["income statement"])
+    assert case_matches(case, _chunk("AAPL", section="CONSOLIDATED INCOME STATEMENT"))
+
+
+def test_case_matches_section_contains_still_works():
+    case = EvalCase(query="q", ticker="AAPL", section_contains="risk")
+    assert case_matches(case, _chunk("AAPL", section="Item 1A: Risk Factors"))
+    assert not case_matches(case, _chunk("AAPL", section="Item 7: MD&A"))
+
+
+def test_case_matches_section_contains_and_any_of_combined():
+    # Either source satisfies the section requirement.
+    case = EvalCase(
+        query="q", ticker="AAPL",
+        section_contains="Income Statement", section_any_of=["MD&A"],
+    )
+    assert case_matches(case, _chunk("AAPL", section="Income Statement"))
+    assert case_matches(case, _chunk("AAPL", section="Item 7: MD&A"))
+    assert not case_matches(case, _chunk("AAPL", section="Balance Sheet"))
+
+
+def test_from_dict_reads_both_section_keys():
+    c1 = EvalCase.from_dict({"query": "q", "ticker": "AAPL", "section_contains": "Risk"})
+    assert c1.section_contains == "Risk"
+    assert c1.accepted_sections() == ["Risk"]
+
+    c2 = EvalCase.from_dict(
+        {"query": "q", "ticker": "MSFT", "section_any_of": ["Income Statement", "MD&A"]}
+    )
+    assert c2.section_any_of == ["Income Statement", "MD&A"]
+    assert c2.accepted_sections() == ["Income Statement", "MD&A"]
+
+
 # ── ranking metrics ──────────────────────────────────────────────────────────
 
 def test_rank_of_first_match():
@@ -112,8 +163,13 @@ def test_run_eval_uses_injected_retriever_and_passes_filters():
 
 def test_seed_eval_set_loads():
     cases = load_eval_set(Path("backend/eval/eval_set.json"))
-    assert len(cases) >= 5
+    assert len(cases) >= 18
     assert all(c.query and c.ticker for c in cases)
+    # Expanded coverage: multiple tickers and filing types.
+    tickers = {c.ticker for c in cases}
+    assert {"AAPL", "MSFT", "NVDA"} <= tickers
+    doc_types = {c.doc_type for c in cases}
+    assert "10-Q" in doc_types
 
 
 def test_format_report_is_stringable():
