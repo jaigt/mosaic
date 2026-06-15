@@ -12,22 +12,26 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 
 ---
 
-## P0 — Blockers (nothing real works end-to-end until these are cleared)
+## P0 — Blockers (mostly cleared 2026-06-15; see notes)
 
-- [ ] **Set a real `GOOGLE_API_KEY` in `.env`.** All three provider keys in
-      `.env` are placeholders — no LLM/embedding call can succeed. Get a free
-      key at https://aistudio.google.com/app/apikey. Everything else in the
-      stale-config cluster was fixed 2026-06-09 (model names, embedding dim) —
-      the key is the only remaining blocker. EDGAR fetch + XBRL parse work
-      without it.
-- [ ] **Live end-to-end smoke test** once the key is valid: ingest one filing
-      (e.g. AAPL 10-K) → confirm chunks land in LanceDB → ask a question →
-      confirm streaming answer + sources + a chart. The 112 backend tests mock
-      all LLM/embedding calls, so this is the only unverified path.
-      Note: `gemini-3.5-flash` / `gemini-3.1-flash-lite` (set 2026-06-09 from
-      live Google docs) should be re-checked against
-      https://ai.google.dev/gemini-api/docs/models if this sits for months —
-      stale model names were a silent 404 source before.
+- [x] **Real `GOOGLE_API_KEY` set + live-verified (2026-06-15).** Auth confirmed
+      via `models.list()`. The configured `gemini-3.5-flash` /
+      `gemini-3.1-flash-lite` names were **invalid** (don't exist; only
+      `*-preview` do) — now pinned to stable GA `gemini-2.5-flash` /
+      `gemini-2.5-flash-lite`, verified working. Embedding `gemini-embedding-001`
+      live at 3072-dim.
+- [x] **Live end-to-end smoke PASSED.** Full ingest (AAPL 10-Q: fetch→parse→
+      batch-summarize 21 tables→embed 52 chunks→store) in **8.4s**. Chat: live
+      retrieval → synthesis with a real cited figure + a generative `<chart>` →
+      self-verification returned `supported`. Auto-ingest-on-miss fires
+      correctly for an absent ticker (MSFT). Stale AAPL rows refreshed (36→52).
+- [ ] **FREE-TIER EMBEDDING QUOTA is the binding constraint.**
+      `embed_content_free_tier_requests` = 100/min (+ a daily cap) on
+      `gemini-embedding-001`. A full fresh ingest can exhaust it; the embedder
+      now retries/backs off on 429 (up to ~60s) and ingest degrades gracefully,
+      but a large multi-filing ingest will be quota-throttled. **This makes the
+      "local embeddings" item below the highest-value infra step** — it removes
+      the embedding key dependency entirely (only synthesis would need a key).
 
 ---
 
@@ -61,11 +65,13 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 - [ ] **Tune reformulation/hybrid/MMR/overlap params** against the eval harness
       (overfetch factor, `mmr_lambda`, RRF `k`, `_TEXT_CHUNK_OVERLAP`,
       `should_reformulate` thresholds).
-- [ ] **Consider local embeddings** (e.g. `fastembed`, ONNX, no torch) as a
-      `local-*` route in `embedder.py`: would make ingest + retrieval work with
-      zero API keys (only synthesis would need one). Trade-off: weaker
-      embeddings than gemini-embedding-001, new dep, and a re-ingest (different
-      dim). Do after the Python 3.11 upgrade — onnxruntime has dropped 3.9.
+- [ ] **Local embeddings (PRIORITY — see P0 quota note).** A `local-*` route in
+      `embedder.py` (e.g. `fastembed`/ONNX, no torch) would make ingest +
+      retrieval work with zero API keys and **remove the free-tier embedding
+      quota wall** hit during live verification 2026-06-15 (only synthesis would
+      then need a key). Trade-off: weaker embeddings than gemini-embedding-001, a
+      new dep, and a re-ingest (different dim → new LanceDB table). Venv is now
+      Python 3.14 so onnxruntime wheels are available.
 
 ---
 
