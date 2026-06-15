@@ -1,4 +1,4 @@
-# TODO — Value Investing RAG
+# TODO — Mosaic (formerly ValueRAG)
 
 Single source of truth for outstanding work. Prioritized, with file pointers.
 Companion to `docs/PROJECT_STATUS_AND_ROADMAP.md` (background, architecture
@@ -90,22 +90,17 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       reimplemented with BeautifulSoup(lxml) — robust on nested tables (outermost
       only), `<th>`, colspans; never throws (returns input unchanged on parse
       failure). Same signature; 22 tests in `test_table_clean.py`.
-- [ ] **Store `period_of_report` as a metadata column.** `filing_quarter` is a
-      *calendar* quarter, which differs from the *fiscal* quarter for off-cycle
-      filers (e.g. AAPL). Requires a schema change + re-ingest.
-- [ ] **Re-ingest the stale AAPL rows.** The 36 pre-existing rows keep their old
-      (buggy) quarter labels until re-ingested; new ingests are correct.
+- [x] **Store `period_of_report` as a metadata column** — DONE (round 7), with an
+      injection-safe date filter.
+- [x] **Re-ingest the stale AAPL rows** — DONE (refreshed to local-bge-large;
+      36→52/94 chunks).
 - [ ] **Remove/justify unused `index_offset`** param in `_elements_to_chunks`.
 
 ---
 
 ## P3 — Ops / infra robustness
 
-- [ ] **Rebuild the venv on Python 3.11+.** Two reasons now: 3.9 is EOL, AND
-      the current `.venv` is broken-by-move — `pyvenv.cfg`/`activate` hardcode
-      the old `~/Desktop/Code/valueinvesting` path, so `source
-      .venv/bin/activate` silently falls through to system Python. Until then,
-      invoke `./.venv/bin/python` directly (works fine).
+- [x] **Rebuilt the venv on Python 3.14** (round 5) — invoke `./.venv/bin/python`.
 - [ ] **Lock dependencies** (`uv` or `pip-tools`) for reproducible installs.
 - [ ] **Cross-process durability.** `_ingest_tasks` is in-memory per-worker.
       Only matters if this goes multi-worker — then move to Redis/Celery.
@@ -115,11 +110,15 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 
 ---
 
-## P3 — Future features (blueprints exist; not started)
+## P3 — Future features
 
 - [ ] Bulk 10-Q ingestion (multiple quarters in one action).
-- [ ] Portfolio analyzer (cross-filing / cross-ticker comparison views).
-- [ ] Form 4 / 13F trackers (insider + institutional holdings).
+- [ ] **Watchlist / portfolio view** — a saved set of tickers with a cross-ticker
+      dashboard (comparison charts exist; saved watchlist + recurring-use surface
+      does not). The highest-value net-new feature.
+- [x] **Form 4 / 13F trackers** (insider + institutional) — DONE (round 7), plus
+      the smart-money "which superinvestors hold X" tracker.
+- [ ] Catalysts / earnings-date awareness, alerts (not started).
 
 ---
 
@@ -222,8 +221,8 @@ query" — the gap is DISCOVERABILITY, not capability.
       over a corpus WITH proper table summaries, once daily gen quota resets.
 - [ ] Full live ReAct exercise that triggers a real auto-ingest end-to-end
       (blocked today by the flash-lite per-DAY generation cap + embedding/min cap).
-- [ ] Frontend visual QA of the new responsive/drawer + verification badge in a
-      real browser.
+- [x] Frontend visual QA in a real browser — DONE: screenshotted all 3 themes
+      (desktop + populated panels + mobile) during the visual audit.
 
 ### Round 4 (2026-06-09) — visual redesign: "The Analyst's Study"
 - [x] **Root-cause spacing bug:** an un-layered `* { margin:0; padding:0 }`

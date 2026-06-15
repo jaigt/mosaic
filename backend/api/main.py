@@ -82,7 +82,7 @@ async def _lifespan(app: "FastAPI"):
     yield
 
 
-app = FastAPI(title="Value Investing RAG API", version="0.1.0", lifespan=_lifespan)
+app = FastAPI(title="Mosaic API", version="0.1.0", lifespan=_lifespan)
 
 # Request-ID middleware first so every downstream log carries the id.
 install_request_id_middleware(app)

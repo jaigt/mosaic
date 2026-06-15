@@ -1,8 +1,16 @@
-# Value Investing RAG
+# Mosaic
 
-A local, multi-provider RAG pipeline for querying SEC filings (10-Ks, 10-Qs) with
-LLM-powered analysis. FastAPI + LanceDB backend, React + Vite + TypeScript frontend,
-streaming chat with inline source citations and generative financial charts.
+*Read the filings, not the headlines.*
+
+An autonomous equity-research analyst over SEC filings. Ask about any company and
+Mosaic fetches its filings from EDGAR on demand, answers with cited figures and
+generative charts, tracks insider (Form 4) and superinvestor (13F) activity, and
+self-verifies every number against its sources. FastAPI + LanceDB backend (local
+offline embeddings), React + Vite + TypeScript frontend with a multi-tool ReAct
+agent, streaming chat, and three themes.
+
+> The name nods to the **mosaic theory** of investing — building a view from many
+> lawful primary sources. (Formerly "ValueRAG".)
 
 ## Documentation
 

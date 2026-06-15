@@ -71,12 +71,12 @@ const Sidebar: React.FC<SidebarProps> = ({
             aria-hidden="true"
             className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-amber-400/50 shadow-[inset_0_0_0_3px_var(--color-ink-900),inset_0_0_0_4px_rgba(210,173,82,0.35)] bg-gradient-to-b from-ink-700 to-ink-850"
           >
-            <span className="font-display text-[19px] leading-none text-amber-300 [text-shadow:0_1px_0_rgba(0,0,0,0.6)]">V</span>
+            <span className="font-display text-[19px] leading-none text-amber-300 [text-shadow:0_1px_0_rgba(0,0,0,0.6)]">M</span>
           </div>
           <div className="min-w-0 flex-1 leading-none">
-            <h1 className="font-display text-[21px] tracking-[0.01em] text-paper-100">ValueRAG</h1>
+            <h1 className="font-display text-[21px] tracking-[0.01em] text-paper-100">Mosaic</h1>
             <div className="mt-1.5 font-mono text-[9.5px] uppercase tracking-[0.28em] text-fg-400">
-              The Filing Ledger
+              Primary Sources
             </div>
           </div>
           {isMobile && (
