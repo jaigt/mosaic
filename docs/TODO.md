@@ -86,12 +86,22 @@ key and hits no quota. Cloud keys remain optional fallbacks.
 
 ---
 
+## Strategic direction — structured fact base + valuation engine
+
+- [ ] **The next major build:** shift from "re-read filings every query" to a
+      **structured financial fact base** (extract once at ingest, mostly from
+      XBRL) + a deterministic **valuation engine**, with cheap retrieval at query
+      time and the watchlist/alerts on top. This is the differentiation (a
+      *valuation* product, not a filing chatbot) and the cost win. Full spec:
+      [`VALUATION_ENGINE_DESIGN.md`](./VALUATION_ENGINE_DESIGN.md). Phase 1 =
+      fact base + XBRL extractor + `get_financials` tool.
+
 ## P3 — Future features
 
 - [ ] **Watchlist / portfolio view** — a saved set of tickers with a cross-ticker
       dashboard. Comparison charts exist; a saved watchlist + recurring-use
-      surface does not. **The highest-value net-new feature** (turns Mosaic from
-      "ask about a company" into a daily-use product).
+      surface does not. Becomes far more powerful on top of the fact base +
+      valuation engine above (alerts on metric/valuation changes, not just events).
 - [ ] **Hosting / deploy** (for showing others) — local oMLX can't be demoed
       remotely. When public: static FE on Cloudflare Pages + FastAPI/LanceDB on a
       small box (Railway/Render/Fly) + a cloud LLM key. See

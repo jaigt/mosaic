@@ -22,6 +22,7 @@ agent, streaming chat, and three themes.
 | [docs/reference/FRONTEND_IMPLEMENTATION.md](docs/reference/FRONTEND_IMPLEMENTATION.md) | Frontend reference — components, design system, generative UI |
 | [docs/UX_AUDIT.md](docs/UX_AUDIT.md) · [docs/VISUAL_AUDIT.md](docs/VISUAL_AUDIT.md) | UX + visual design audits and fixes (incl. the 3-theme system) |
 | [docs/HOSTING_AND_AI_OPTIONS.md](docs/HOSTING_AND_AI_OPTIONS.md) | Hosting + LLM-cost strategy (for later) |
+| [docs/VALUATION_ENGINE_DESIGN.md](docs/VALUATION_ENGINE_DESIGN.md) | **Design proposal** — structured fact base + valuation engine (next phase) |
 | [docs/blueprints/](docs/blueprints/) | Historical origin blueprints — each banners what's since shipped or diverged (don't treat as current) |
 
 ## Quick start
