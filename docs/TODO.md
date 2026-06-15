@@ -60,18 +60,27 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       injectable live runner (`backend/eval/harness.py`,
       `python -m backend.eval.harness`), and a seed set
       (`backend/eval/eval_set.json`, 8 AAPL cases). All scoring is unit-tested
-      without a key. REMAINING: ingest the referenced filings + run live to get
-      real baseline numbers, then expand the set beyond AAPL.
+      without a key. First live run (2026-06-15, local-bge-large over AAPL 10-K):
+      MRR=0.5, hit@5=0.5 — all 4 NARRATIVE cases hit at rank 1; all 4
+      FINANCIAL-STATEMENT cases missed, but that's confounded (raw-table fallback
+      + overly strict `section_contains` labels that reject a correct MD&A
+      retrieval). REMAINING: refine the section labels (allow MD&A for revenue
+      qs), re-run with proper summaries, expand beyond AAPL.
 - [ ] **Tune reformulation/hybrid/MMR/overlap params** against the eval harness
       (overfetch factor, `mmr_lambda`, RRF `k`, `_TEXT_CHUNK_OVERLAP`,
       `should_reformulate` thresholds).
-- [ ] **Local embeddings (PRIORITY — see P0 quota note).** A `local-*` route in
-      `embedder.py` (e.g. `fastembed`/ONNX, no torch) would make ingest +
-      retrieval work with zero API keys and **remove the free-tier embedding
-      quota wall** hit during live verification 2026-06-15 (only synthesis would
-      then need a key). Trade-off: weaker embeddings than gemini-embedding-001, a
-      new dep, and a re-ingest (different dim → new LanceDB table). Venv is now
-      Python 3.14 so onnxruntime wheels are available.
+- [x] **Local embeddings DONE (2026-06-15).** `local-*` route in `embedder.py`
+      via `fastembed`/ONNX (CPU, no key, no quota): `local-bge-large` (1024d,
+      now the DEFAULT), `-base` (768d), `-small` (384d). Removes the embedding
+      quota wall — only synthesis/fast use a key now. Verified live: AAPL
+      10-K/10-Q ingested with 100% local embeddings. NOTE: different vector
+      space + dim than gemini-embedding-001 → re-ingest required when switching
+      (drop the `sec_chunks` table). bge-large download is ~1.2GB on first use.
+- [ ] **Clean embedding A/B (local-bge-large vs gemini-embedding-001).** Blocked
+      2026-06-15 on free-tier quota: the local-embedding eval ran but the corpus
+      had RAW table fallback (gen quota was also spent), confounding the
+      financial-statement cases. Re-run both embedders over a corpus WITH proper
+      table summaries, once quota resets, to attribute quality fairly.
 
 ---
 
