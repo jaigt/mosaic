@@ -4,7 +4,7 @@ import { getInsiderActivity, InsiderActivity, InsiderTxn } from '../api';
 import { Badge, Spinner, cn } from './ui';
 
 interface InsiderPanelProps {
-  ticker: string;
+  ticker: string | null;
 }
 
 type Tone = 'ledger' | 'crimson' | 'neutral';
@@ -47,6 +47,12 @@ const InsiderPanel: React.FC<InsiderPanelProps> = ({ ticker }) => {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (!ticker) {
+      setLoading(false);
+      setError(false);
+      setData(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(false);
@@ -67,6 +73,17 @@ const InsiderPanel: React.FC<InsiderPanelProps> = ({ ticker }) => {
   }, [ticker]);
 
   const txns = data?.transactions ?? [];
+
+  if (!ticker) {
+    return (
+      <section aria-label="Insider activity" className="px-5 pb-4 pt-3">
+        <SectionLabel>Insider Activity</SectionLabel>
+        <div className="px-1 py-3 font-serif text-[13px] italic leading-relaxed text-fg-400">
+          Select a filing or ask about a company to see its insider activity.
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section aria-label={`Insider activity for ${ticker}`} className="px-5 pb-4 pt-3">

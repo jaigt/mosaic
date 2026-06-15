@@ -83,38 +83,6 @@ export async function* streamChat(
   }
 }
 
-export async function ingestFiling(
-  ticker: string,
-  documentType: string,
-  year?: number
-): Promise<{ status: string; task_id: string }> {
-  const resp = await fetch(`${BASE}/ingest`, {
-    method: 'POST',
-    headers: jsonHeaders(),
-    body: JSON.stringify({ ticker, document_type: documentType, year: year || null }),
-  });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: 'Ingest failed' }));
-    throw new Error(err.detail || 'Ingest failed');
-  }
-  return resp.json();
-}
-
-export interface IngestStatus {
-  status: string;
-  state: string;
-  chunks: number | null;
-  error: string | null;
-  stage: string | null;
-  detail: Record<string, unknown>;
-}
-
-export async function getIngestStatus(taskId: string): Promise<IngestStatus> {
-  const resp = await fetch(`${BASE}/ingest/status/${taskId}`);
-  if (!resp.ok) throw new Error('Failed to get status');
-  return resp.json();
-}
-
 export async function listFilings(): Promise<{ filings: FilingInfo[] }> {
   const resp = await fetch(`${BASE}/filings`);
   if (!resp.ok) throw new Error('Failed to list filings');

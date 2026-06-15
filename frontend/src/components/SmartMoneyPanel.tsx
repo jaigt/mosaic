@@ -4,7 +4,7 @@ import { getSmartMoney, SmartMoney, FundPosition, FundChange } from '../api';
 import { Badge, Spinner, cn } from './ui';
 
 interface SmartMoneyPanelProps {
-  ticker: string;
+  ticker: string | null;
 }
 
 type Tone = 'ledger' | 'amber' | 'crimson' | 'neutral';
@@ -59,6 +59,12 @@ const SmartMoneyPanel: React.FC<SmartMoneyPanelProps> = ({ ticker }) => {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (!ticker) {
+      setLoading(false);
+      setError(false);
+      setData(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(false);
@@ -81,6 +87,17 @@ const SmartMoneyPanel: React.FC<SmartMoneyPanelProps> = ({ ticker }) => {
   const positions = data?.positions ?? [];
   const exits = data?.exits ?? [];
   const indexEmpty = data != null && !data.refreshed_at;
+
+  if (!ticker) {
+    return (
+      <section aria-label="Superinvestors" className="px-5 pb-4 pt-3">
+        <SectionLabel>Superinvestors</SectionLabel>
+        <div className="px-1 py-3 font-serif text-[13px] italic leading-relaxed text-fg-400">
+          Select a filing or ask about a company to see who holds it.
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section aria-label={`Superinvestors holding ${ticker}`} className="px-5 pb-4 pt-3">

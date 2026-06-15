@@ -46,7 +46,7 @@ const VerificationBadge: React.FC<{ verification: VerificationResult }> = ({ ver
   if (verification.status === 'supported') {
     return (
       <div className="mt-3">
-        <Badge tone="ledger" pill>
+        <Badge tone="ledger" pill title="Every figure was re-checked against the cited filings.">
           <ShieldCheck size={11} aria-hidden="true" />
           Verified against sources
         </Badge>
@@ -68,7 +68,7 @@ const VerificationBadge: React.FC<{ verification: VerificationResult }> = ({ ver
             hasIssues ? 'cursor-pointer transition-transform hover:scale-[1.04]' : 'cursor-default',
           )}
         >
-          <Badge tone="amber" pill>
+          <Badge tone="amber" pill title="We re-checked the answer against the cited filings and flagged points worth a second look.">
             <AlertTriangle size={11} aria-hidden="true" />
             {count} point{count === 1 ? '' : 's'} to verify
             {hasIssues &&
