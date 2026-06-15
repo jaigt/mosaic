@@ -176,7 +176,16 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       no key/quota. Per-ticker insider buy/sell (live-verified AAPL) + per-fund
       13F top holdings (verified BRK-B). ReAct tools (results = citable synthetic
       sources) + `GET /insiders/{ticker}` `/institutions/{fund}` + insider sidebar
-      panel. SCOPE: "which funds hold ticker X" is NOT feasible from EDGAR.
+      panel.
+- [x] **Smart-money tracker** (`superinvestors.py`) — solves "which funds hold
+      ticker X" via a CURATED superinvestor universe (`funds.json`, 11 verified
+      CIKs, editable): `refresh()` pulls each fund's latest+prior 13F → local
+      ticker-keyed index with Q/Q change tags (new/added/trimmed/exited);
+      `funds_holding(ticker)` queries it instantly. ReAct tool + `GET
+      /smart-money/{ticker}` + `POST /smart-money/refresh` + sidebar panel.
+      Live-verified: 11 funds / 319 positions in ~4s (AAPL→Buffett 22%, META→Burry
+      exited, GOOGL→Buffett added). NOTE: curated/notable funds, not all ~5k
+      filers (EDGAR has no global reverse-index) — and that's the higher-signal set.
 - [x] **`period_of_report` metadata column** + injection-safe date filter.
 - [x] **Bounded ingest task store** (`_MAX_INGEST_TASKS`, evicts oldest finished).
 - [x] **Hosting/AI brainstorm** → `docs/HOSTING_AND_AI_OPTIONS.md` (TL;DR: pain is
