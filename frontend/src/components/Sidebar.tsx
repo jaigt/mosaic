@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Plus, RefreshCw } from 'lucide-react';
+import { FileText, Plus, RefreshCw, X } from 'lucide-react';
 import { listFilings, FilingInfo, ingestFiling, getIngestStatus } from '../api';
 import { Button, Spinner, cn } from './ui';
 
@@ -7,9 +7,21 @@ interface SidebarProps {
   onIngestClick: () => void;
   activeFiling: FilingInfo | null;
   onSelectFiling: (filing: FilingInfo) => void;
+  /** Below the tablet breakpoint the sidebar renders as a toggleable overlay
+   *  drawer instead of a fixed column. */
+  isMobile?: boolean;
+  drawerOpen?: boolean;
+  onCloseDrawer?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onIngestClick, activeFiling, onSelectFiling }) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  onIngestClick,
+  activeFiling,
+  onSelectFiling,
+  isMobile = false,
+  drawerOpen = false,
+  onCloseDrawer,
+}) => {
   const [filings, setFilings] = useState<FilingInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [reingesting, setReingesting] = useState<string | null>(null); // filing_id as ticker-year-type
@@ -64,8 +76,20 @@ const Sidebar: React.FC<SidebarProps> = ({ onIngestClick, activeFiling, onSelect
 
   const totalChunks = filings.reduce((n, f) => n + f.chunks, 0);
 
+  // On mobile the sidebar is unmounted when the drawer is closed, so its
+  // 30-second poll doesn't run off-screen.
+  if (isMobile && !drawerOpen) return null;
+
   return (
-    <aside className="flex w-[var(--sidebar-width)] flex-col overflow-hidden border-r border-line bg-ink-900/55 backdrop-blur-sm">
+    <aside
+      className={cn(
+        'flex flex-col overflow-hidden border-line bg-ink-900/55 backdrop-blur-sm',
+        isMobile
+          ? 'fixed inset-y-0 left-0 z-50 w-[min(86vw,var(--sidebar-width))] border-r shadow-panel'
+          : 'w-[var(--sidebar-width)] border-r',
+      )}
+      aria-label="Filing ledger navigation"
+    >
       {/* Masthead: engraved seal + wordmark, certificate double-rule below. */}
       <div className="vr-rule-b px-6 pb-5 pt-7">
         <div className="flex items-center gap-3.5">
@@ -75,12 +99,22 @@ const Sidebar: React.FC<SidebarProps> = ({ onIngestClick, activeFiling, onSelect
           >
             <span className="font-display text-[19px] leading-none text-amber-300 [text-shadow:0_1px_0_rgba(0,0,0,0.6)]">V</span>
           </div>
-          <div className="min-w-0 leading-none">
+          <div className="min-w-0 flex-1 leading-none">
             <h1 className="font-display text-[21px] tracking-[0.01em] text-paper-100">ValueRAG</h1>
             <div className="mt-1.5 font-mono text-[9.5px] uppercase tracking-[0.28em] text-fg-400">
               The Filing Ledger
             </div>
           </div>
+          {isMobile && (
+            <button
+              type="button"
+              onClick={onCloseDrawer}
+              aria-label="Close menu"
+              className="-mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-md text-fg-400 transition-colors hover:bg-white/5 hover:text-fg-100"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
       </div>
 

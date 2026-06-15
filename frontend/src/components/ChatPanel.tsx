@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Upload, Trash2, X, FileText, Square } from 'lucide-react';
+import { Send, Upload, Trash2, X, FileText, Square, Menu } from 'lucide-react';
 import Message from './Message';
 import AgentState, { AgentStep, AgentStepKind } from './AgentState';
 import { streamChat, Source, FilingInfo, VerificationResult } from '../api';
@@ -28,9 +28,12 @@ interface ChatPanelProps {
   onClear: () => void;
   activeFiling: FilingInfo | null;
   onClearFiling: () => void;
+  /** On mobile, show a hamburger that opens the sidebar drawer. */
+  showMenuButton?: boolean;
+  onMenuClick?: () => void;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick, onIngestClick, onClear, activeFiling, onClearFiling }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick, onIngestClick, onClear, activeFiling, onClearFiling, showMenuButton, onMenuClick }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -197,8 +200,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
 
   return (
     <Card elevated className="flex flex-1 flex-col bg-ink-900/70">
-      <header className="vr-rule-b flex min-h-[62px] min-w-0 items-center justify-between gap-2 px-6 py-3.5">
+      <header className="vr-rule-b flex min-h-[62px] min-w-0 items-center justify-between gap-2 px-4 py-3.5 md:px-6">
         <div className="flex min-w-0 items-baseline gap-3 overflow-hidden">
+          {showMenuButton && (
+            <button
+              type="button"
+              onClick={onMenuClick}
+              aria-label="Open menu"
+              className="-ml-1 grid h-9 w-9 shrink-0 place-items-center self-center rounded-md text-fg-300 transition-colors hover:bg-white/5 hover:text-fg-100"
+            >
+              <Menu size={18} />
+            </button>
+          )}
           <h2 className="shrink-0 font-display text-[17px] leading-tight tracking-[0.01em] text-paper-100">
             The Analyst's Desk
           </h2>
@@ -238,7 +251,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
         </div>
       </header>
 
-      <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
+      <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-6">
         {messages.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center px-10 py-8 text-center">
             <div className="vr-rise font-mono text-[10px] uppercase tracking-[0.32em] text-amber-400/90" style={{ animationDelay: '60ms' }}>

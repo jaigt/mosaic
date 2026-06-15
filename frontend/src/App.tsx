@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatPanel from './components/ChatPanel';
 import SourcePanel from './components/SourcePanel';
 import IngestModal from './components/IngestModal';
 import { Source, FilingInfo } from './api';
 import { cn } from './components/ui';
+import { useIsMobile } from './hooks/useMediaQuery';
 import './index.css';
 
 const App: React.FC = () => {
@@ -14,6 +15,25 @@ const App: React.FC = () => {
   const [activeSourceIdx, setActiveSourceIdx] = useState(0);
   const [ingestOpen, setIngestOpen] = useState(false);
   const [activeFiling, setActiveFiling] = useState<FilingInfo | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const isMobile = useIsMobile();
+
+  // Close the mobile drawer whenever we cross back to the desktop layout, so a
+  // drawer left open on a narrow viewport doesn't linger after a resize.
+  useEffect(() => {
+    if (!isMobile) setDrawerOpen(false);
+  }, [isMobile]);
+
+  // Esc closes the mobile drawer.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
 
   // New result set → reset the focused source so a stale index can't blank
   // the panel.
@@ -42,10 +62,16 @@ const App: React.FC = () => {
     if (newLeftWidth > 2 && newLeftWidth < 98) setLeftWidth(newLeftWidth);
   };
 
+  const handleSelectFiling = (filing: FilingInfo) => {
+    setActiveFiling(filing);
+    setDrawerOpen(false);
+  };
+
   return (
     <div
       className={cn(
         'flex h-screen w-screen overflow-hidden',
+        'flex-col md:flex-row',
         isResizing ? 'cursor-col-resize select-none' : 'cursor-default',
       )}
       onMouseMove={onResize}
@@ -54,13 +80,30 @@ const App: React.FC = () => {
       onTouchMove={onResize}
       onTouchEnd={stopResizing}
     >
+      {/* Mobile drawer scrim */}
+      {isMobile && drawerOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setDrawerOpen(false)}
+          className="fixed inset-0 z-40 bg-ink-950/70 backdrop-blur-sm md:hidden"
+        />
+      )}
+
       <Sidebar
         onIngestClick={() => setIngestOpen(true)}
         activeFiling={activeFiling}
-        onSelectFiling={setActiveFiling}
+        onSelectFiling={handleSelectFiling}
+        isMobile={isMobile}
+        drawerOpen={drawerOpen}
+        onCloseDrawer={() => setDrawerOpen(false)}
       />
-      <main className="flex flex-1 gap-2 p-3">
-        <div className="flex min-w-0 overflow-hidden" style={{ width: `${leftWidth}%` }}>
+
+      <main className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:flex-row md:p-3">
+        <div
+          className="flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-none"
+          style={isMobile ? undefined : { width: `${leftWidth}%` }}
+        >
           <ChatPanel
             onSourcesUpdate={handleSourcesUpdate}
             onCitationClick={handleCitationClick}
@@ -68,9 +111,12 @@ const App: React.FC = () => {
             onClear={() => { setSources([]); setActiveSourceIdx(0); setActiveFiling(null); }}
             activeFiling={activeFiling}
             onClearFiling={() => setActiveFiling(null)}
+            showMenuButton={isMobile}
+            onMenuClick={() => setDrawerOpen(true)}
           />
         </div>
 
+        {/* Resizer — desktop only; vertical stacking has no draggable split. */}
         <div
           role="separator"
           aria-orientation="vertical"
@@ -78,14 +124,14 @@ const App: React.FC = () => {
           onMouseDown={startResizing}
           onTouchStart={startResizing}
           className={cn(
-            'group relative mx-1 w-1 shrink-0 cursor-col-resize rounded-full transition-colors',
+            'group relative mx-1 hidden w-1 shrink-0 cursor-col-resize rounded-full transition-colors md:block',
             isResizing ? 'bg-amber-400' : 'bg-line hover:bg-line-strong',
           )}
         >
           <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
         </div>
 
-        <div className="flex flex-1 min-w-0 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <SourcePanel
             sources={sources}
             activeIdx={activeSourceIdx}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Modal from './Modal';
 
@@ -45,5 +45,37 @@ describe('Modal', () => {
     );
     await userEvent.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onClose on backdrop mousedown', () => {
+    const onClose = vi.fn();
+    render(
+      <Modal open onClose={onClose} title="T">
+        <p>x</p>
+      </Modal>,
+    );
+    const dialog = screen.getByRole('dialog');
+    // The backdrop is the dialog panel's parent (the fixed overlay).
+    fireEvent.mouseDown(dialog.parentElement!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('traps focus: Tab from the last focusable wraps to the first', async () => {
+    render(
+      <Modal open onClose={() => {}} title="Focus">
+        <button>first</button>
+        <button>second</button>
+      </Modal>,
+    );
+    const closeBtn = screen.getByRole('button', { name: /close dialog/i });
+    const first = screen.getByRole('button', { name: 'first' });
+    const last = screen.getByRole('button', { name: 'second' });
+
+    last.focus();
+    expect(last).toHaveFocus();
+    await userEvent.tab();
+    // Wraps back to the first focusable in the panel (the close button).
+    expect(closeBtn).toHaveFocus();
+    expect(first).not.toHaveFocus();
   });
 });

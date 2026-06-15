@@ -132,6 +132,8 @@ const IngestModal: React.FC<IngestModalProps> = ({ open, onClose }) => {
 
         {message && (
           <div
+            role="status"
+            aria-live="polite"
             className={cn(
               'flex items-start gap-2 rounded-md border px-3 py-2.5 text-[13px] leading-snug',
               status === 'success'
