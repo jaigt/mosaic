@@ -26,6 +26,9 @@ def retrieve(
     ticker: Optional[str] = None,
     year: Optional[int] = None,
     document_type: Optional[str] = None,
+    period_of_report: Optional[str] = None,
+    period_start: Optional[str] = None,
+    period_end: Optional[str] = None,
     hybrid: bool = True,
     diversify_results: bool = True,
     overfetch: int = _DEFAULT_OVERFETCH,
@@ -56,6 +59,9 @@ def retrieve(
             ticker=effective_ticker,
             year=effective_year,
             document_type=effective_doc_type,
+            period_of_report=period_of_report,
+            period_start=period_start,
+            period_end=period_end,
         )
     except ValueError as e:
         logger.warning(f"Ignoring invalid retrieval filters: {e}")
@@ -105,6 +111,8 @@ def _rows_to_retrieved(results: list) -> list[RetrievedChunk]:
             document_type=row["document_type"],
             filing_year=row["filing_year"],
             filing_quarter=row["filing_quarter"],
+            # "" (the stored sentinel for "unset") normalizes back to None.
+            period_of_report=row.get("period_of_report") or None,
             sec_item_section=row["sec_item_section"],
             chunk_type=row["chunk_type"],
             text_content=row["text_content"],

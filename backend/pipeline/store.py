@@ -72,6 +72,7 @@ _SCHEMA = pa.schema([
     pa.field("document_type", pa.string()),
     pa.field("filing_year", pa.int32()),
     pa.field("filing_quarter", pa.string()),
+    pa.field("period_of_report", pa.string()),
     pa.field("sec_item_section", pa.string()),
     pa.field("chunk_type", pa.string()),
     pa.field("text_content", pa.string()),
@@ -167,6 +168,9 @@ def upsert_chunks(chunks: Sequence[DocumentChunk], vectors: Sequence[list[float]
             "document_type": chunk.document_type,
             "filing_year": chunk.filing_year,
             "filing_quarter": chunk.filing_quarter,
+            # Empty string (not None) keeps the PyArrow string column happy when
+            # the date is absent; round-trips to "" which callers treat as unset.
+            "period_of_report": chunk.period_of_report or "",
             "sec_item_section": chunk.sec_item_section,
             "chunk_type": chunk.chunk_type,
             "text_content": chunk.text_content,

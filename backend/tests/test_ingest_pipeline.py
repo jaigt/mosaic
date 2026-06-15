@@ -21,6 +21,7 @@ _META = {
     "filing_year": 2024,
     "filing_quarter": "FY",
     "filing_date": "2024-11-01",
+    "period_of_report": "2024-09-28",
 }
 
 
@@ -98,6 +99,24 @@ def test_progress_callback_stages_in_order(monkeypatch):
         "summarizing_tables", "embedding", "storing", "done",
     ]
     assert events[-1]["chunks"] == written == 1
+
+
+def test_chunks_carry_period_of_report(monkeypatch):
+    """period_of_report flows from resolve_filing metadata onto each chunk."""
+    captured = []
+    _patch_common(monkeypatch, captured_vectors=captured)
+    pad = "x" * 300
+    doc = ParsedDocument(elements=[ParsedElement("text", f"narrative {pad}", "Item 1")])
+    monkeypatch.setattr(ingest_mod, "html_from_filing", lambda f: "<html/>")
+    monkeypatch.setattr(ingest_mod, "parse_filing_html", lambda h: doc)
+    monkeypatch.setattr(ingest_mod, "xbrl_from_filing", lambda f: object())
+    monkeypatch.setattr(ingest_mod, "parse_xbrl_statements", lambda x: [])
+
+    ingest_mod.ingest_filing("AAPL", "10-K")
+
+    chunks = captured[0][0]
+    assert chunks, "expected at least one chunk"
+    assert all(c.period_of_report == "2024-09-28" for c in chunks)
 
 
 def test_path_a_failure_is_fatal(monkeypatch):

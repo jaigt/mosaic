@@ -369,6 +369,7 @@ def _elements_to_chunks(
             document_type=document_type,
             filing_year=meta["filing_year"],
             filing_quarter=meta["filing_quarter"],
+            period_of_report=meta.get("period_of_report"),
             sec_item_section=element.section,
             chunk_type=chunk_type,
             text_content=text_content,
