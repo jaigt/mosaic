@@ -119,86 +119,158 @@ def _merge_text_elements(elements: list[ParsedElement]) -> list[ParsedElement]:
     return merged
 
 
+# Currency symbols that SEC filings place in their own cell before a value.
+_CURRENCY_SYMBOLS = ("$", "€", "£", "¥")
+# A cell is "numeric" (i.e. a data cell, not a header) if it contains a run of
+# at least 2 consecutive digits.
+_NUMERIC_RE = re.compile(r"\d{2,}")
+
+
+def _cell_text(cell) -> str:
+    """Visible text of a <td>/<th>, tags stripped and whitespace-collapsed."""
+    return cell.get_text(strip=True)
+
+
 def _clean_table_html(html: str) -> str:
     """
-    Clean up SEC filing HTML tables:
-    - Merge currency symbol cells ($ €) into the following number cell
-    - Remove self-closing empty cells (standardize to <td></td>)
-    - Remove rows that become entirely empty after cleaning
-    - Wrap leading non-numeric rows in <thead>
+    Clean up SEC filing HTML tables using an HTML parser (BeautifulSoup + lxml)
+    rather than regex, so it stays correct on nested tables, <th> headers,
+    colspans and other real-world filing markup:
+
+    - Merge a lone currency-symbol cell ($/€/£/¥) into the following number cell
+    - Merge a trailing "%" cell into the preceding cell
+    - Standardize self-closing/empty cells
+    - Drop rows that are entirely empty (no text in any cell)
+    - Wrap leading non-numeric rows in <thead>, data rows in <tbody>
+
+    Operates on the OUTERMOST table only; nested tables are left untouched so
+    they are not corrupted. On any parse failure the input is returned
+    unchanged (logged as a warning). Empty/whitespace input is returned as-is.
+
+    Signature is load-bearing: this is called from ``_elements_to_chunks`` and
+    monkeypatched in tests, so the name + ``(html: str) -> str`` shape must stay.
     """
-    # Merge: <td>$</td><td>123</td>  →  <td>$123</td>
-    # SEC filings put $ in its own cell before the value
-    html = re.sub(
-        r'<td[^>]*>\s*(\$|€|£|¥)\s*</td>\s*<td([^>]*)>(.*?)</td>',
-        lambda m: f'<td{m.group(2)}>{m.group(1)}{m.group(3).strip()}</td>',
-        html,
-        flags=re.DOTALL,
-    )
-    # Merge: <td>23</td><td>%</td>  →  <td>23%</td>
-    html = re.sub(
-        r'<td([^>]*)>(.*?)</td>\s*<td[^>]*>\s*%\s*</td>',
-        lambda m: f'<td{m.group(1)}>{m.group(2).strip()}%</td>',
-        html,
-        flags=re.DOTALL,
-    )
-    # Standardize self-closing empty cells to <td></td> (helps some browsers)
-    html = re.sub(r'<td\s*/>', '<td></td>', html)
-    
-    # DO NOT remove <td></td> cells here — they are often padding for column alignment!
-    
-    # Remove rows that are entirely empty (no text at all in any cell)
-    def is_row_empty(row_html: str) -> bool:
-        cells = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.DOTALL)
-        # Strip tags and whitespace from each cell to see if anything is left
-        return not any(re.sub(r'<[^>]+>', '', c).strip() for c in cells)
+    if not html or not html.strip():
+        return html
 
-    rows = re.findall(r'(<tr[^>]*>.*?</tr>)', html, re.DOTALL)
-    cleaned_rows = [r for r in rows if not is_row_empty(r)]
-    
-    # Rebuild table with cleaned rows
-    table_match = re.search(r'<table[^>]*>(.*?)</table>', html, re.DOTALL)
-    if table_match:
-        html = f'<table>{"".join(cleaned_rows)}</table>'
-    
-    # Wrap leading non-numeric rows in <thead> so CSS can center them
-    html = _add_thead(html)
-    return html
+    try:
+        from bs4 import BeautifulSoup
 
+        soup = BeautifulSoup(html, "lxml")
+        table = soup.find("table")
+        if table is None:
+            return html
 
-def _add_thead(html: str) -> str:
-    """
-    Detect header rows (rows with no numeric-looking cells) at the top of a table
-    and wrap them in <thead> so they can be styled separately from data rows.
-    """
-    _NUMERIC_RE = re.compile(r'\d{2,}')  # at least 2 digits = likely a data cell
+        # Process only the rows that belong directly to THIS (outermost) table,
+        # never rows that live inside a nested table — those keep their own
+        # markup intact.
+        def _owning_table(node):
+            return node.find_parent("table")
 
-    def upgrade_table(m: re.Match) -> str:
-        body = m.group(1)
-        rows = re.findall(r'(<tr[^>]*>.*?</tr>)', body, re.DOTALL)
-        if not rows:
-            return m.group(0)
+        rows = [r for r in table.find_all("tr") if _owning_table(r) is table]
 
-        header_rows, data_rows = [], []
-        past_header = False
         for row in rows:
-            cell_texts = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
-            cell_texts = [re.sub(r'<[^>]+>', '', c).strip() for c in cell_texts]
-            has_numbers = any(_NUMERIC_RE.search(c) for c in cell_texts if c)
-            if not past_header and not has_numbers:
-                header_rows.append(row)
-            else:
-                past_header = True
-                data_rows.append(row)
+            cells = [c for c in row.find_all(["td", "th"]) if _owning_table(c) is table]
+            _merge_currency_cells(cells)
+            _merge_percent_cells(cells)
 
-        result = ''
-        if header_rows:
-            result += '<thead>' + ''.join(header_rows) + '</thead>'
-        if data_rows:
-            result += '<tbody>' + ''.join(data_rows) + '</tbody>'
-        return f'<table>{result}</table>'
+        # Drop fully-empty rows (after merging) that belong to this table.
+        for row in list(rows):
+            row_cells = [c for c in row.find_all(["td", "th"]) if _owning_table(c) is table]
+            if row_cells and not any(_cell_text(c) for c in row_cells):
+                row.decompose()
 
-    return re.sub(r'<table[^>]*>(.*?)</table>', upgrade_table, html, flags=re.DOTALL)
+        _wrap_thead(soup, table)
+
+        return str(table)
+    except Exception:  # pragma: no cover - defensive: never break ingest
+        logger.warning("table HTML cleanup failed; returning input unchanged", exc_info=True)
+        return html
+
+
+def _merge_currency_cells(cells: list) -> None:
+    """Merge each lone currency-symbol cell into the following sibling cell.
+
+    ``<td>$</td><td>123</td>`` becomes ``<td>$123</td>`` (the symbol cell is
+    removed). The merged value carries the *following* cell's attributes,
+    matching the prior regex behavior.
+    """
+    for cell in list(cells):
+        text = _cell_text(cell)
+        if text not in _CURRENCY_SYMBOLS:
+            continue
+        nxt = cell.find_next_sibling(["td", "th"])
+        if nxt is None:
+            continue
+        nxt.string = f"{text}{_cell_text(nxt)}"
+        cell.decompose()
+        cells.remove(cell)
+
+
+def _merge_percent_cells(cells: list) -> None:
+    """Merge a trailing lone ``%`` cell into the preceding sibling cell.
+
+    ``<td>23</td><td>%</td>`` becomes ``<td>23%</td>`` (the percent cell is
+    removed). The merged value keeps the *preceding* cell's attributes.
+    """
+    for cell in list(cells):
+        if _cell_text(cell) != "%":
+            continue
+        prev = cell.find_previous_sibling(["td", "th"])
+        if prev is None:
+            continue
+        prev.string = f"{_cell_text(prev)}%"
+        cell.decompose()
+        if cell in cells:
+            cells.remove(cell)
+
+
+def _wrap_thead(soup, table) -> None:
+    """
+    Detect leading header rows (no numeric-looking cell) and wrap them in
+    <thead>, with the remaining rows in <tbody>. A cell is numeric when it
+    contains 2+ consecutive digits. Operates on the outermost table's own rows
+    only; nested tables are left alone. Existing <thead>/<tbody>/<tr> nesting is
+    rebuilt from scratch so the output is normalized.
+    """
+    def _owning_table(node):
+        return node.find_parent("table")
+
+    rows = [r for r in table.find_all("tr") if _owning_table(r) is table]
+    if not rows:
+        return
+
+    header_rows, data_rows = [], []
+    past_header = False
+    for row in rows:
+        cells = [c for c in row.find_all(["td", "th"]) if _owning_table(c) is table]
+        has_numbers = any(_NUMERIC_RE.search(_cell_text(c)) for c in cells if _cell_text(c))
+        if not past_header and not has_numbers:
+            header_rows.append(row)
+        else:
+            past_header = True
+            data_rows.append(row)
+
+    # Detach every row, then re-attach under fresh <thead>/<tbody> wrappers.
+    for row in rows:
+        row.extract()
+
+    # Clear out any pre-existing section wrappers (thead/tbody/tfoot) that
+    # belonged to this table so we don't leave empty shells behind.
+    for section in table.find_all(["thead", "tbody", "tfoot"]):
+        if _owning_table(section) is table:
+            section.decompose()
+
+    if header_rows:
+        thead = soup.new_tag("thead")
+        for row in header_rows:
+            thead.append(row)
+        table.append(thead)
+    if data_rows:
+        tbody = soup.new_tag("tbody")
+        for row in data_rows:
+            tbody.append(row)
+        table.append(tbody)
 
 
 def _elements_to_chunks(
