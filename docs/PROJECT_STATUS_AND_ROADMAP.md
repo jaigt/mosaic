@@ -3,10 +3,10 @@
 > **Purpose:** A cold-start handoff — what Mosaic is, how to run it, the
 > environment gotchas, and the architecture invariants not to break. For the
 > live backlog and the dated history of what changed, see
-> [`docs/TODO.md`](./TODO.md) (rounds 1–7 + audits). This doc stays lean and
-> current; TODO wins on any conflict.
+> [`docs/TODO.md`](./TODO.md). This doc stays lean and current; TODO wins on any
+> conflict.
 >
-> **Last updated:** 2026-06-15 (round 7 + rebrand ValueRAG → Mosaic).
+> **Last updated:** 2026-06-15 (local-first / oMLX round). Repo: `github.com/jaigt/mosaic`.
 
 ---
 
@@ -27,20 +27,29 @@ its numbers against the retrieved sources.
   fund holdings, and "which superinvestors hold X". Then a **self-verification**
   critic pass. Provider-agnostic text-ReAct by default; native Gemini
   function-calling is opt-in (`agent_native_tools`).
+- **Models:** provider-agnostic routing by model name. Prefix families
+  (`claude-`/`gemini-`/`gpt-`/`o*`) **plus** a `"<provider>/<model>"` form for
+  OpenAI-compatible servers — `cerebras`/`groq`/`mistral` (free cloud tiers) and
+  `ollama`/`mlx` (local). The current POC default is **fully local on oMLX**
+  (synthesis `mlx/Qwen3.5-27B-Claude-distill`, fast/agent `mlx/gemma-4-12B`) — $0,
+  offline, no rate limits. `AGENT_MODEL` can point the ReAct loop at a faster
+  model than synthesis.
 - **Embeddings:** **local by default** (`local-bge-large`, fastembed/ONNX, CPU,
-  no key/quota). Only synthesis + the fast model need an API key.
+  no key/quota). With a local LLM too, the whole stack needs no API key.
 - **Frontend:** React + Vite + TS, Tailwind v4, **3 themes** (Study / Modern-Dark
   / Modern-Light, toggle persisted), insider + smart-money sidebar panels that
-  follow the conversation, multi-series comparison charts, chat persistence. There
-  is **no manual ingest UI** — the agent ingests on demand.
+  follow the conversation, multi-series **theme-aware** comparison charts, chat
+  persistence. There is **no manual ingest UI** — the agent ingests on demand.
 
-Run:
+Run (local-oMLX layout — oMLX serves on :8000, so the backend uses :8008):
 ```bash
-./.venv/bin/uvicorn backend.api.main:app --reload   # backend :8000
-cd frontend && npm run dev                           # Vite :5173, proxies /api → :8000
-./.venv/bin/python -m pytest backend/tests -q        # backend tests (247)
-cd frontend && npm test                              # frontend tests (57)
+./.venv/bin/uvicorn backend.api.main:app --port 8008  # backend :8008
+cd frontend && npm run dev                            # Vite :5173, proxies /api → :8008
+./.venv/bin/python -m pytest backend/tests -q         # backend tests (268)
+cd frontend && npm test                               # frontend tests (57)
 ```
+(Default `:8000` is fine if you're not running a local model server on it; the
+Vite proxy target is overridable via `BACKEND_URL`.)
 
 Related docs: [`docs/TODO.md`](./TODO.md), [`reference/BACKEND.md`](./reference/BACKEND.md),
 [`reference/FRONTEND_IMPLEMENTATION.md`](./reference/FRONTEND_IMPLEMENTATION.md),
@@ -55,12 +64,12 @@ historical origin docs (banners mark what's since shipped or diverged).
 1. **Use `./.venv/bin/python` directly.** The venv is on **Python 3.14**
    (rebuilt 2026-06-15). `source .venv/bin/activate` may not be on PATH in every
    shell — invoking the interpreter path always works.
-2. **A real `GOOGLE_API_KEY` is in `.env`** (free tier). Embeddings are local so
-   ingest + retrieval need no key; **synthesis + the fast model do**. The binding
-   constraint is the **free-tier per-DAY generation cap** (`gemini-2.5-flash` /
-   `-flash-lite`) — heavy use exhausts it; a paid key (pennies/mo) removes it.
-   Embeddings also have a per-minute cap on the *hosted* embedder, but local is
-   the default so that's moot unless you switch.
+2. **No API key is required for the default local stack.** `.env` selects models
+   via `FAST_MODEL`/`SYNTHESIS_MODEL`/`AGENT_MODEL`; the POC default points them at
+   a local **oMLX** server (`mlx/<model>`, `MLX_BASE_URL` + optional `MLX_API_KEY`).
+   Cloud fallbacks are optional: a free **Cerebras** key (`cerebras/<model>`,
+   ~1M tok/day) or **Gemini** (`gemini-*`, but a stingy free per-day cap — the
+   reason we moved local). Whatever the LLM, **embeddings stay local** (no key).
 3. **Switching the embedding model requires a re-ingest.** `EMBEDDING_DIM` is
    baked into the LanceDB schema at table creation (`local-bge-large` = 1024-dim).
    To change: drop `data/lancedb` (regenerable) and re-ingest.
@@ -80,17 +89,14 @@ historical origin docs (banners mark what's since shipped or diverged).
 
 ## 3. Current state (2026-06-15)
 
-- ✅ **247 backend** tests + **57 frontend** tests green; build clean.
-- ✅ **Live-verified:** full ingest (AAPL 10-Q, ~8s with local embeddings),
-  agentic chat with cited figures + chart + `supported` verification, ReAct loop
-  driving multiple tool calls, holdings trackers (AAPL insiders; Berkshire 13F),
-  smart-money index (11 funds / 319 positions), all 3 themes.
-- ⏳ **Quota-deferred (see TODO → TEST-LATER):** a clean local-vs-Gemini embedding
-  A/B and a full live agent-with-tools run that triggers a real auto-ingest — both
-  blocked only by the free-tier daily generation cap, not by code.
-- Work is on the **`feat/agentic-latency`** branch.
-
-The full dated history (rounds 1–7, the audits) lives in `docs/TODO.md`.
+- ✅ **268 backend** tests + **57 frontend** tests green; build clean.
+- ✅ **Live-verified on the local oMLX stack:** AAPL queries (cited figures +
+  theme-aware chart + `supported` verification) and the **full AAPL/MSFT/GOOGL
+  comparison end-to-end** (auto-ingest of the missing tickers during testing,
+  accurate figures, multi-company chart, reliable Gemma tool-call JSON). Holdings
+  trackers + smart-money index verified earlier; all 3 themes verified in-browser.
+- Latest work merged to **`develop`** (pushed). The old free-tier-quota blocker is
+  resolved by running fully local — see `docs/TODO.md` for the current backlog.
 
 ---
 
@@ -105,9 +111,15 @@ The full dated history (rounds 1–7, the audits) lives in `docs/TODO.md`.
 - All values interpolated into LanceDB `where`/`delete` go through
   `backend/retrieval/filters.py` (allowlist + escape; incl. `validate_iso_date`).
   Never f-string raw.
-- **Provider routing is by model-name prefix** (`claude-`/`gemini-`/`gpt-`/`o*`,
-  and `local-*` for embeddings) in `llm.py` + `embedder.py`. `EMBEDDING_DIM` is
-  fixed at table creation → re-ingest to change the embedder.
+- **Provider routing is by model name** in `llm.py`: prefix families
+  (`claude-`/`gemini-`/`gpt-`/`o*`) plus `"<provider>/<model>"` for
+  OpenAI-compatible endpoints (`cerebras`/`groq`/`mistral`/`ollama`/`mlx`) via a
+  `base_url` swap; transient 429s retry with backoff (`_with_retry`). Embeddings
+  route by `local-*` in `embedder.py`; `EMBEDDING_DIM` is fixed at table creation
+  → re-ingest to change the embedder.
+- **The LanceDB store self-migrates** (`store.py` `_migrate_schema`): columns in
+  `_SCHEMA` missing from an existing table are backfilled on open, so adding a
+  metadata column never requires wiping the corpus.
 - **Agent decision logic is pure + injectable** (`backend/agent/planner.py`,
   `react.py`): `plan_auto_ingest`, `parse_action`, `verify_answer`, the ReAct loop
   (injected generate/retrieve/ingest/tool fns). Keep it testable without a key.
@@ -131,10 +143,10 @@ The full dated history (rounds 1–7, the audits) lives in `docs/TODO.md`.
 ## 5. How to verify after changes
 
 ```bash
-./.venv/bin/python -m pytest backend/tests -q        # 247+ must stay green
+./.venv/bin/python -m pytest backend/tests -q        # 268+ must stay green
 ./.venv/bin/python -c "from backend.api.main import app"   # import smoke
 cd frontend && npm run build && npm test             # clean + 57 green
-# Live (needs GOOGLE_API_KEY; watch the free-tier daily cap):
+# Live (local stack — no key needed; ingest uses local embeddings + EDGAR):
 ./.venv/bin/python -c "from backend.pipeline.ingest import ingest_filing; print(ingest_filing('AAPL','10-Q'))"
 ```
 

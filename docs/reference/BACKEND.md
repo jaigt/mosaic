@@ -26,7 +26,7 @@
 ## 1. Project Structure
 
 ```
-valueinvesting/
+mosaic/
 ├── backend/
 │   ├── api/
 │   │   ├── main.py               # FastAPI app — all HTTP endpoints, SSE chat
@@ -205,15 +205,23 @@ critic result.)
 
 Supported model examples:
 
-Routing is by **model-name prefix** (`claude-`/`gemini-`/`gpt-`/`o*`; `local-*` for
-embeddings). Models verified live 2026-06-15 — pin **stable GA** names, not
-`*-preview` (a prior preview pin caused silent 404s).
+Routing is by **model name** (`llm.py`):
+- **Prefix families:** `claude-` → Anthropic, `gemini-` → Google, `gpt-`/`o*` →
+  OpenAI. (`local-*` routes embeddings in `embedder.py`.)
+- **`"<provider>/<model>"`** → an OpenAI-compatible endpoint via a `base_url`
+  swap: `cerebras` / `groq` / `mistral` (free cloud tiers) and `ollama` / `mlx`
+  (local, keyless or `MLX_API_KEY`). e.g. `mlx/gemma-4-12B-it-8bit`.
 
-| Role | Default | Alternatives |
+Transient overloads (429 `queue_exceeded` / 503 / 529) retry with backoff
+(`_with_retry`); the SDK's own retry is disabled (`max_retries=0`) so ours
+governs. `AGENT_MODEL` overrides the model that drives the ReAct loop. Pin
+**stable GA** names for the hosted providers, not `*-preview`.
+
+| Role (`.env`) | POC default (local oMLX) | Alternatives |
 |---|---|---|
-| Fast model (table summaries, filters, verification) | `gemini-2.5-flash-lite` | `claude-haiku-4-5`, `gpt-*-mini` |
-| Synthesis / agent reasoning | `gemini-2.5-flash` | `claude-sonnet-4-6`, `gpt-*` |
-| Embedding | **`local-bge-large`** (1024-dim, offline) | `gemini-embedding-001` (3072), `text-embedding-3-large` (3072) |
+| Fast / agent (`FAST_MODEL` / `AGENT_MODEL`) | `mlx/gemma-4-12B-it-8bit` | `cerebras/*`, `gemini-2.5-flash-lite`, `claude-haiku-4-5` |
+| Synthesis (`SYNTHESIS_MODEL`) | `mlx/Qwen3.5-27B-Claude-distill` | `cerebras/gpt-oss-120b`, `gemini-2.5-flash`, `claude-sonnet-4-6` |
+| Embedding (`EMBEDDING_MODEL`) | **`local-bge-large`** (1024-dim, offline) | `gemini-embedding-001` (3072), `text-embedding-3-large` (3072) |
 
 ---
 
