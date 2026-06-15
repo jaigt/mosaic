@@ -188,8 +188,11 @@ _OPENAI_COMPAT = {
     "mlx": (None, None, "start the oMLX / mlx_lm OpenAI-compatible server (set MLX_BASE_URL to its port)"),
 }
 
-# Keyless local providers: no API key, base_url comes from settings.
+# Local providers: base_url from settings. Optionally a settings attr holding an
+# API key (oMLX can require one); absent/empty falls back to a placeholder, which
+# is fine for servers with auth disabled.
 _LOCAL_BASE_URLS = {"ollama": "ollama_base_url", "mlx": "mlx_base_url"}
+_LOCAL_API_KEYS = {"mlx": "mlx_api_key"}
 
 
 def _provider(model: str) -> str:
@@ -221,9 +224,11 @@ def _openai_client_and_model(model: str):
     if prefix in _OPENAI_COMPAT:
         base_url, key_attr, hint = _OPENAI_COMPAT[prefix]
         real_model = model.split("/", 1)[1]
-        if prefix in _LOCAL_BASE_URLS:  # keyless local server (ollama / mlx / oMLX)
+        if prefix in _LOCAL_BASE_URLS:  # local server (ollama / mlx / oMLX)
             local_url = getattr(settings, _LOCAL_BASE_URLS[prefix])
-            return OpenAI(api_key="local", base_url=local_url, max_retries=0), real_model
+            key_attr = _LOCAL_API_KEYS.get(prefix)
+            local_key = (getattr(settings, key_attr) if key_attr else "") or "local"
+            return OpenAI(api_key=local_key, base_url=local_url, max_retries=0), real_model
         key = getattr(settings, key_attr)
         if not key:
             raise RuntimeError(

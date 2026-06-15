@@ -24,8 +24,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // Backend origin is overridable via BACKEND_URL so a port change doesn't
+      // need a code edit. Default 8008 (8000 is left free for a local oMLX/mlx
+      // model server).
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.BACKEND_URL || 'http://localhost:8008',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
