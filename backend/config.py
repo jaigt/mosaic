@@ -20,6 +20,24 @@ class Settings(BaseSettings):
     # Per-IP request budget per minute for cost-bearing endpoints. 0 = disabled.
     rate_limit_per_minute: int = 30
 
+    # ── Ingestion table-summarization throughput ────────────────────────────
+    # The table-summary pass is the dominant ingestion cost: each table is a
+    # fast-LLM call, throttled to the provider's requests-per-minute budget.
+    # Defaults are tuned for the Gemini AI Studio FREE tier (~15 RPM). Batching
+    # several tables per call is what actually beats the RPM ceiling — raise the
+    # batch size and RPM together when running on a paid key.
+    table_summary_rpm: int = 15          # provider requests/min for the fast model
+    table_summary_concurrency: int = 5   # max in-flight summary calls
+    table_summary_batch_size: int = 6    # tables summarized per LLM call (>=1)
+
+    # ── Agentic chat behaviour ──────────────────────────────────────────────
+    # Corpus autonomy: when a query names a ticker the corpus lacks, fetch that
+    # filing from EDGAR mid-answer, then re-search. Self-verification: a critic
+    # pass checks the answer's claims against the retrieved sources. Both add
+    # LLM calls per query — disable to minimize cost/latency on the free tier.
+    enable_auto_ingest: bool = True
+    enable_self_verification: bool = True
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",
         env_file_encoding="utf-8",
