@@ -21,6 +21,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Callable, Optional
 
 from backend.pipeline.llm import ToolSpec
@@ -61,6 +62,22 @@ _TOOL_SPECS = [
         description="List which filings the corpus currently contains.",
         parameters={"properties": {}, "required": []},
     ),
+    ToolSpec(
+        name="get_insider_activity",
+        description="Recent insider (Form 4) buy/sell transactions for a ticker — officers/directors trading their own company's stock. Use for 'is anyone buying/selling X', insider sentiment.",
+        parameters={
+            "properties": {"ticker": {"type": "string", "description": "company ticker"}},
+            "required": ["ticker"],
+        },
+    ),
+    ToolSpec(
+        name="get_fund_holdings",
+        description="A named institution's latest 13F portfolio (top holdings). Use for 'what does <fund> hold' (e.g. Berkshire). Input is the FUND's ticker/CIK, not the stock you're researching.",
+        parameters={
+            "properties": {"fund": {"type": "string", "description": "the fund's ticker or CIK (e.g. BRK-B)"}},
+            "required": ["fund"],
+        },
+    ),
 ]
 
 _NATIVE_SYSTEM_PROMPT = """\
@@ -98,6 +115,12 @@ Available tools:
     about (the corpus doesn't have it yet).
     input: {"ticker": str, "document_type"?: "10-K"|"10-Q", "year"?: int}
 - "list_corpus": list which filings the corpus currently contains. input: {}
+- "get_insider_activity": recent insider (Form 4) buy/sell transactions for a
+    ticker (officers/directors). Use for insider-sentiment questions.
+    input: {"ticker": str}
+- "get_fund_holdings": a named institution's latest 13F top holdings. The input
+    is the FUND's ticker/CIK (e.g. BRK-B for Berkshire), not the stock you're
+    researching. input: {"fund": str}
 - "answer": stop gathering — you have enough evidence to answer.
     input: {}
 
@@ -206,11 +229,15 @@ class ReactAgent:
         max_steps: int = MAX_STEPS,
         native: bool = False,
         session_factory: Optional[Callable] = None,
+        insider_fn: Optional[Callable] = None,
+        fund_fn: Optional[Callable] = None,
     ):
         self._generate = generate_fn
         self._retrieve = retrieve_fn
         self._ingest = ingest_fn
         self._list_corpus = list_corpus_fn
+        self._insider_fn = insider_fn
+        self._fund_fn = fund_fn
         self._model = model
         self._max_steps = max_steps
         # Native function-calling mode (more reliable than parsing JSON from
@@ -339,6 +366,10 @@ class ReactAgent:
                 return self._list_corpus() or "The corpus is empty."
             except Exception as e:  # noqa: BLE001
                 return f"Could not list corpus: {e}"
+        if action.tool == "get_insider_activity":
+            return self._do_insider(action.input, filters, on_event)
+        if action.tool == "get_fund_holdings":
+            return self._do_fund(action.input, on_event)
         # Unknown tool — nudge the model to answer.
         on_event({"kind": "note", "label": f"Unknown tool '{action.tool}', wrapping up."})
         return f"Unknown tool '{action.tool}'. Call 'answer' if you have enough evidence."
@@ -376,6 +407,54 @@ class ReactAgent:
         except Exception as e:  # noqa: BLE001
             on_event({"kind": "ingest_failed", "label": f"Couldn't fetch {ticker} {doc_type}: {e}"})
             return f"Ingest of {ticker} {doc_type} failed: {e}"
+
+    def _do_insider(self, inp: dict, filters: dict, on_event) -> str:
+        if self._insider_fn is None:
+            return "Insider data is unavailable."
+        ticker = (inp.get("ticker") or filters.get("ticker") or "").strip().upper()
+        if not ticker:
+            return "get_insider_activity needs a ticker."
+        on_event({"kind": "insiders", "label": f"Pulling {ticker} insider (Form 4) activity…"})
+        try:
+            activity = self._insider_fn(ticker)
+        except Exception as e:  # noqa: BLE001
+            return f"Insider lookup for {ticker} failed: {e}"
+        text = activity.summary_text()
+        # Make it a citable source so the synthesis can reference the figures.
+        self._last_retrieved = [_synthetic_source(
+            f"INSIDER_{ticker}", ticker, "Insider Activity (Form 4)", text, doc_type="Form 4",
+        )]
+        return text
+
+    def _do_fund(self, inp: dict, on_event) -> str:
+        if self._fund_fn is None:
+            return "Institutional (13F) data is unavailable."
+        fund = (inp.get("fund") or "").strip()
+        if not fund:
+            return "get_fund_holdings needs a fund ticker/CIK."
+        on_event({"kind": "institutions", "label": f"Pulling {fund} 13F holdings…"})
+        try:
+            holdings = self._fund_fn(fund)
+        except Exception as e:  # noqa: BLE001
+            return f"13F lookup for {fund} failed: {e}"
+        text = holdings.summary_text()
+        self._last_retrieved = [_synthetic_source(
+            f"FUND_{fund.upper()}", fund.upper(), "Institutional Holdings (13F)", text, doc_type="13F",
+        )]
+        return text
+
+
+def _synthetic_source(chunk_id: str, ticker: str, section: str, text: str, doc_type: str):
+    """A citable, RetrievedChunk-shaped source for non-filing tool results
+    (insider/13F). Duck-types through synthesis (_format_sources) and the
+    citation panel without being a real DocumentChunk (its doc_type isn't a
+    filing Literal). Score 1.0 — these are exact, authoritative data."""
+    chunk = SimpleNamespace(
+        chunk_id=chunk_id, ticker=ticker, cik="", document_type=doc_type,
+        filing_year=0, filing_quarter="—", sec_item_section=section,
+        chunk_type="text", text_content=text, raw_payload=text,
+    )
+    return SimpleNamespace(chunk=chunk, score=1.0)
 
 
 def _summarize_results(chunks) -> str:

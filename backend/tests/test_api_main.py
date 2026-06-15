@@ -96,6 +96,65 @@ def test_ingest_failure_reports_failed_status(monkeypatch):
     assert "kaboom" in s["error"]
 
 
+def test_insiders_endpoint(monkeypatch):
+    from backend.holdings.models import InsiderActivity
+    monkeypatch.setattr(
+        main, "get_insider_activity",
+        lambda ticker, limit: InsiderActivity(ticker=ticker.upper(), buys=1, bought_shares=500),
+    )
+    client = _client(monkeypatch)
+    r = client.get("/insiders/aapl")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "AAPL" and body["buys"] == 1 and body["net_shares"] == 500
+
+
+def test_institutions_endpoint(monkeypatch):
+    from backend.holdings.models import FundHoldings, Holding
+    fh = FundHoldings(fund="Berkshire", report_period="2026-03-31", total_value=1000,
+                      total_holdings=1, holdings=[Holding("APPLE", "AAPL", "C2", 600, 3, 60.0)])
+    monkeypatch.setattr(main, "get_fund_holdings", lambda fund, top: fh)
+    client = _client(monkeypatch)
+    r = client.get("/institutions/BRK-B")
+    assert r.status_code == 200
+    assert r.json()["holdings"][0]["ticker"] == "AAPL"
+
+
+def test_insiders_endpoint_error_is_502(monkeypatch):
+    def boom(ticker, limit):
+        raise RuntimeError("edgar down")
+    monkeypatch.setattr(main, "get_insider_activity", boom)
+    client = _client(monkeypatch)
+    assert client.get("/insiders/AAPL").status_code == 502
+
+
+def test_ingest_tasks_are_bounded(monkeypatch):
+    """The task store evicts oldest FINISHED tasks over the cap; RUNNING tasks
+    are never evicted."""
+    main._ingest_tasks.clear()
+    monkeypatch.setattr(main, "_MAX_INGEST_TASKS", 5)
+
+    # Fill with finished tasks (ascending updated_at).
+    for i in range(5):
+        t = main.IngestTask(task_id=f"done-{i}")
+        t.mark_completed(i)
+        t.updated_at = 1000 + i
+        main._ingest_tasks[t.task_id] = t
+    # Pin one running task that must survive eviction.
+    running = main.IngestTask(task_id="running")
+    running.updated_at = 0  # oldest, but RUNNING
+    main._ingest_tasks["running"] = running
+
+    with main._ingest_lock:
+        main._evict_ingest_tasks_locked()
+        main._ingest_tasks["new"] = main.IngestTask(task_id="new")
+
+    assert "running" in main._ingest_tasks          # never evicted
+    assert "new" in main._ingest_tasks
+    assert "done-0" not in main._ingest_tasks        # oldest finished evicted
+    assert len(main._ingest_tasks) <= main._MAX_INGEST_TASKS + 1
+
+
 def test_status_not_found(monkeypatch):
     client = _client(monkeypatch)
     s = client.get("/ingest/status/does-not-exist").json()

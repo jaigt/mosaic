@@ -178,6 +178,45 @@ def test_generate_failure_ends_gracefully():
     assert result.sources == []
 
 
+def test_insider_tool_adds_citable_synthetic_source():
+    """get_insider_activity result becomes a citable source feeding synthesis."""
+    from backend.holdings.models import InsiderActivity, InsiderTxn
+    act = InsiderActivity(
+        ticker="AAPL",
+        transactions=[InsiderTxn("Tim", "CEO", "2026-05-01", "sell", "S", "Open Market Sale", 100, 190.0, 19000)],
+        buys=0, sells=1, sold_shares=100,
+    )
+    gen = _scripted_generate(
+        {"tool": "get_insider_activity", "input": {"ticker": "AAPL"}},
+        {"tool": "answer", "input": {}},
+    )
+    events = []
+    agent = _agent(gen)
+    agent._insider_fn = lambda t: act
+    result = agent.run("Is anyone selling AAPL?", [], {}, events.append)
+    assert any(e["kind"] == "insiders" for e in events)
+    assert len(result.sources) == 1
+    src = result.sources[0]
+    assert src.chunk.chunk_id == "INSIDER_AAPL"
+    assert src.chunk.document_type == "Form 4"
+    assert "insider activity" in src.chunk.text_content.lower()
+
+
+def test_fund_holdings_tool_adds_source():
+    from backend.holdings.models import FundHoldings, Holding
+    fh = FundHoldings(fund="Berkshire", report_period="2026-03-31", total_value=1000,
+                      total_holdings=1, holdings=[Holding("APPLE", "AAPL", "C2", 600, 3, 60.0)])
+    gen = _scripted_generate(
+        {"tool": "get_fund_holdings", "input": {"fund": "BRK-B"}},
+        {"tool": "answer", "input": {}},
+    )
+    agent = _agent(gen)
+    agent._fund_fn = lambda f: fh
+    result = agent.run("What does Berkshire hold?", [], {}, lambda e: None)
+    assert [s.chunk.chunk_id for s in result.sources] == ["FUND_BRK-B"]
+    assert result.sources[0].chunk.document_type == "13F"
+
+
 def test_native_loop_with_fake_session():
     """Native mode: a fake tool session drives search → (text = done), sources
     accumulate, no JSON parsing involved."""

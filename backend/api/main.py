@@ -28,6 +28,7 @@ from backend.api.security import enforce_rate_limit, require_api_key
 from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
 from backend.agent import ReactAgent, plan_auto_ingest, verify_answer
+from backend.holdings import get_fund_holdings, get_insider_activity
 from backend.pipeline.ingest import ingest_filing
 from backend.pipeline.llm import generate, stream_generate, supports_native_tools
 from backend.pipeline.store import get_table
@@ -176,8 +177,27 @@ class IngestTask:
 
 # In-memory status tracker for ingestion tasks (single-worker POC).
 # In a production app, use Redis/Celery for cross-process durability.
+# Bounded: keeps memory from growing without limit over a long-lived process by
+# evicting the oldest FINISHED tasks once over the cap (running tasks are never
+# evicted, so an in-flight ingest's status is always retrievable).
 _ingest_tasks: dict = {}
 _ingest_lock = threading.Lock()
+_MAX_INGEST_TASKS = 200
+
+
+def _evict_ingest_tasks_locked() -> None:
+    """Drop oldest finished tasks while over the cap. Caller holds the lock."""
+    if len(_ingest_tasks) < _MAX_INGEST_TASKS:
+        return
+    finished = sorted(
+        (t for t in _ingest_tasks.values() if t.state is not IngestState.RUNNING),
+        key=lambda t: t.updated_at,
+    )
+    # Evict enough to leave headroom for new tasks.
+    for task in finished:
+        if len(_ingest_tasks) < _MAX_INGEST_TASKS:
+            break
+        _ingest_tasks.pop(task.task_id, None)
 
 
 @app.post("/ingest", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
@@ -189,6 +209,7 @@ async def ingest(request: IngestRequest, background_tasks: BackgroundTasks):
         existing = _ingest_tasks.get(task_id)
         if existing is not None and existing.state is IngestState.RUNNING:
             return {"status": "already_running", "task_id": task_id}
+        _evict_ingest_tasks_locked()
         _ingest_tasks[task_id] = IngestTask(task_id=task_id)
 
     log_event("INFO", "ingest_started", task_id=task_id, ticker=request.ticker,
@@ -273,6 +294,33 @@ async def list_filings():
     except Exception:
         logger.exception("Failed to list filings")
         raise HTTPException(status_code=500, detail="Failed to list filings")
+
+
+@app.get("/insiders/{ticker}", dependencies=[Depends(enforce_rate_limit)])
+async def insiders(ticker: str, limit: int = 12):
+    """Recent insider (Form 4) buy/sell activity for a ticker. EDGAR-only — no
+    LLM/key. Powers the sidebar insider panel and the agent's insider tool."""
+    limit = max(1, min(limit, 30))
+    try:
+        activity = await asyncio.to_thread(get_insider_activity, ticker, limit)
+        return activity.to_dict()
+    except Exception:
+        logger.exception("Failed to fetch insider activity")
+        raise HTTPException(status_code=502, detail="Failed to fetch insider activity")
+
+
+@app.get("/institutions/{fund}", dependencies=[Depends(enforce_rate_limit)])
+async def institutions(fund: str, top: int = 25):
+    """A fund's latest 13F top holdings (fund = its ticker/CIK, e.g. BRK-B).
+    NOTE: 13F is per-fund; 'which funds hold ticker X' is not supported (EDGAR
+    has no holdings reverse-index)."""
+    top = max(1, min(top, 100))
+    try:
+        holdings = await asyncio.to_thread(get_fund_holdings, fund, top)
+        return holdings.to_dict()
+    except Exception:
+        logger.exception("Failed to fetch fund holdings")
+        raise HTTPException(status_code=502, detail="Failed to fetch fund holdings")
 
 
 @app.post("/chat", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
@@ -403,6 +451,8 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                 model=_agent_model(),
                 max_steps=settings.agent_max_steps,
                 native=native,
+                insider_fn=get_insider_activity,
+                fund_fn=get_fund_holdings,
             )
             holder: dict = {}
             async for ev in _react_gather(
