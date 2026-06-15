@@ -195,6 +195,18 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       (b) durable cross-process task store (Redis) only if multi-worker; (c) paid
       Gemini key / Bedrock route to escape free-tier caps.
 
+### UX audit (2026-06-15) — see `docs/UX_AUDIT.md`
+Headline: we built an autonomous analyst but the UI framed it as "ingest then
+query" — the gap is DISCOVERABILITY, not capability.
+- [x] P0: reframed empty-state copy to "ask about any company, I'll fetch it";
+      capability-showcasing suggested prompts (auto-fetch/compare/smart-money/
+      insiders); wider composer placeholder.
+- [ ] Key insider/smart-money panels to the LAST-DISCUSSED ticker, not only a
+      focused filing (discovered without ingesting first).
+- [ ] De-emphasize manual Ingest (auto-ingest is the front door) + "you can just
+      ask" hint; tooltip explaining the verification badge.
+- [ ] Chat-dominant layout default (sources collapsible); chat persistence.
+
 ### TEST-LATER (deferred on free-tier quota — DO THIS)
 - [ ] Full live ReAct run exercising the new insider/13F tools end-to-end (the
       data fetch is verified; the agent-calls-tool→synthesize path needs gen

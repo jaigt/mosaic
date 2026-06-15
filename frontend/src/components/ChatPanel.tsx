@@ -14,11 +14,20 @@ interface ChatMessage {
   verification?: VerificationResult;
 }
 
-// Order slips — clickable starters shown on the empty desk.
-const SUGGESTED_PROMPTS = [
-  'Summarize the key risk factors',
-  'What drove revenue growth this period?',
-  'Chart revenue over the last three years',
+// Clickable starters on the empty desk. The general set deliberately showcases
+// the agent's powers users won't otherwise discover (auto-fetch a company not in
+// the corpus, compare across names, smart-money/insider lookups). The
+// filing-scoped set shows when a specific filing is in focus.
+const AGENT_PROMPTS = [
+  { tag: 'Auto-fetch', text: 'How did Microsoft do last quarter?' },
+  { tag: 'Compare', text: 'Compare AAPL, MSFT and GOOGL revenue' },
+  { tag: 'Smart money', text: 'Which superinvestors own NVDA?' },
+  { tag: 'Insiders', text: 'Any insider buying or selling at TSLA?' },
+];
+const FILING_PROMPTS = [
+  { tag: 'Risks', text: 'Summarize the key risk factors' },
+  { tag: 'Drivers', text: 'What drove revenue growth this period?' },
+  { tag: 'Trend', text: 'Chart revenue over the last three years' },
 ];
 
 interface ChatPanelProps {
@@ -267,22 +276,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             <p className="vr-rise mt-4 max-w-sm font-serif text-[14.5px] leading-relaxed text-fg-300" style={{ animationDelay: '220ms' }}>
               {activeFiling
                 ? 'Queries are focused on this document. Ask about margins, risk factors, or guidance — every answer cites the page it came from.'
-                : 'Pick a filing from the ledger or ingest a new one, then ask. Every answer cites the exact excerpt it came from.'}
+                : "Ask about any company — I'll pull its SEC filings myself, then answer with cited figures. Compare names, check insider trades, or see which superinvestors own it."}
             </p>
 
             <div className="vr-rise mt-8 flex w-full max-w-md flex-col gap-2" style={{ animationDelay: '300ms' }}>
-              {SUGGESTED_PROMPTS.map((prompt, i) => (
+              {(activeFiling ? FILING_PROMPTS : AGENT_PROMPTS).map((prompt) => (
                 <button
-                  key={prompt}
+                  key={prompt.text}
                   type="button"
-                  onClick={() => setInput(prompt)}
+                  onClick={() => setInput(prompt.text)}
                   className="group flex items-center gap-3 rounded-md border border-line bg-ink-850/60 px-4 py-2.5 text-left transition-all hover:border-amber-500/40 hover:bg-amber-400/[0.05]"
                 >
-                  <span className="font-mono text-[10px] tabular-nums text-fg-400 transition-colors group-hover:text-amber-400">
-                    {String(i + 1).padStart(2, '0')}
+                  <span className="w-[72px] shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-fg-400 transition-colors group-hover:text-amber-400">
+                    {prompt.tag}
                   </span>
                   <span className="flex-1 text-[13px] text-fg-200 transition-colors group-hover:text-fg-100">
-                    {prompt}
+                    {prompt.text}
                   </span>
                   <span className="font-mono text-[11px] text-fg-400 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true">
                     ↵
@@ -313,7 +322,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeFiling ? `Ask the ${activeFiling.ticker} ${activeFiling.filing_year} filing…` : 'Ask the filings — margins, risks, guidance…'}
+            placeholder={activeFiling ? `Ask the ${activeFiling.ticker} ${activeFiling.filing_year} filing…` : 'Ask about any company — “How is NVDA doing?” · “Compare AAPL vs MSFT” · “Who owns META?”'}
             disabled={isStreaming}
             rows={3}
             className="min-h-[84px] max-h-[200px] pr-32 font-serif text-[14.5px] leading-relaxed placeholder:italic"
