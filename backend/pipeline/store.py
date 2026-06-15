@@ -104,6 +104,35 @@ def _validate_vector_dim(table: lancedb.table.Table) -> None:
         )
 
 
+# SQL default (by arrow type) for backfilling a newly-added column, chosen to
+# match what ``upsert_chunks`` writes (e.g. "" for an absent period_of_report).
+_MIGRATION_DEFAULTS = {pa.string(): "''", pa.int32(): "0", pa.int64(): "0"}
+
+
+def _migrate_schema(table: lancedb.table.Table) -> None:
+    """Add columns present in ``_SCHEMA`` but missing from an existing table.
+
+    LanceDB freezes a table's schema at creation. A table created before a
+    column was introduced (e.g. ``period_of_report``) otherwise rejects every
+    insert that includes that field — "field '…' does not exist in table
+    schema". Backfilling the column on open makes the store tolerant of schema
+    evolution so a new metadata field never requires wiping the corpus.
+    """
+    existing = {f.name for f in table.schema}
+    for field in _SCHEMA:
+        if field.name in existing or field.name == "vector":
+            continue  # vector dim is handled by _validate_vector_dim
+        default = _MIGRATION_DEFAULTS.get(field.type, "NULL")
+        try:
+            table.add_columns({field.name: default})
+            logger.info(
+                "Migrated table '%s': added missing column '%s' (default %s)",
+                TABLE_NAME, field.name, default,
+            )
+        except Exception as e:  # noqa: BLE001 — log, don't crash startup/ingest
+            logger.warning("Could not add missing column '%s': %s", field.name, e)
+
+
 def get_table() -> lancedb.table.Table:
     """Connect to (or create) the LanceDB table.
 
@@ -116,6 +145,7 @@ def get_table() -> lancedb.table.Table:
     if TABLE_NAME in db.list_tables().tables:
         table = db.open_table(TABLE_NAME)
         _validate_vector_dim(table)
+        _migrate_schema(table)
         return table
     logger.info(f"Creating new LanceDB table '{TABLE_NAME}'")
     return db.create_table(TABLE_NAME, schema=_SCHEMA)

@@ -43,7 +43,10 @@ class Settings(BaseSettings):
     # several tables per call is what actually beats the RPM ceiling — raise the
     # batch size and RPM together when running on a paid key.
     table_summary_rpm: int = 15          # provider requests/min for the fast model
-    table_summary_concurrency: int = 5   # max in-flight summary calls
+    # Max in-flight summary calls. Kept low (2) because free tiers throttle hard
+    # on bursts — e.g. Cerebras free is ~1 req/sec, so a 5-wide burst instantly
+    # trips a 429. Raise on a paid key or a local model (no rate limit).
+    table_summary_concurrency: int = 2
     table_summary_batch_size: int = 6    # tables summarized per LLM call (>=1)
 
     # ── Agentic chat behaviour ──────────────────────────────────────────────

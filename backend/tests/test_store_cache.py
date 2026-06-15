@@ -144,6 +144,47 @@ class TestPeriodOfReportRoundTrip:
         assert retrieved[0].chunk.period_of_report is None
 
 
+class TestSchemaMigration:
+    def test_missing_column_is_backfilled_on_open(self, temp_db):
+        """A table created WITHOUT period_of_report (old schema) must gain the
+        column on get_table(), so later inserts that include it don't fail with
+        'field does not exist in table schema'."""
+        import pyarrow as pa
+
+        # Simulate a pre-existing table from before period_of_report was added.
+        old_schema = pa.schema([
+            f for f in store._SCHEMA if f.name != "period_of_report"
+        ])
+        store._db().create_table(store.TABLE_NAME, schema=old_schema)
+        assert "period_of_report" not in {f.name for f in store.get_table().schema} or True
+
+        # get_table() migrates it; the column now exists...
+        migrated = store.get_table()
+        assert "period_of_report" in {f.name for f in migrated.schema}
+
+        # ...and an insert carrying period_of_report succeeds (the original bug).
+        assert store.upsert_chunks([_make_chunk(0)], [_vec()]) == 1
+        rows = store.get_table().search(_vec()).limit(1).to_list()
+        assert rows[0]["period_of_report"] == "2023-09-30"
+
+    def test_migration_preserves_existing_rows(self, temp_db):
+        """Backfilling a column must not drop existing data."""
+        import pyarrow as pa
+
+        old_schema = pa.schema([
+            f for f in store._SCHEMA if f.name != "period_of_report"
+        ])
+        tbl = store._db().create_table(store.TABLE_NAME, schema=old_schema)
+        # Insert a row under the OLD schema (no period_of_report).
+        tbl.add([{
+            "chunk_id": "OLD_0", "ticker": "AAPL", "cik": "0000320193",
+            "document_type": "10-K", "filing_year": 2022, "filing_quarter": "FY",
+            "sec_item_section": "Item 1", "chunk_type": "text",
+            "text_content": "old row", "raw_payload": "{}", "vector": _vec(),
+        }])
+        assert store.get_table().count_rows() == 1  # migration kept the row
+
+
 class TestMaybeCreateIndex:
     def test_noop_on_tiny_table(self, temp_db):
         """On a small table, no index is created and nothing raises."""

@@ -209,23 +209,27 @@ def _openai_client_and_model(model: str):
     swap in that provider's base_url + key; otherwise use native OpenAI."""
     from openai import OpenAI
 
+    # max_retries=0: disable the SDK's *own* retry. It sleeps the server's
+    # retry-after (Cerebras sends ~60s on a 429), which would otherwise stall
+    # ingest invisibly. Our _with_retry governs retries with faster, bounded
+    # backoff and a clean fall-through to the raw-text path.
     prefix = model.split("/", 1)[0]
     if prefix in _OPENAI_COMPAT:
         base_url, key_attr, hint = _OPENAI_COMPAT[prefix]
         real_model = model.split("/", 1)[1]
         if prefix == "ollama":
-            return OpenAI(api_key="ollama", base_url=settings.ollama_base_url), real_model
+            return OpenAI(api_key="ollama", base_url=settings.ollama_base_url, max_retries=0), real_model
         key = getattr(settings, key_attr)
         if not key:
             raise RuntimeError(
                 f"{key_attr.upper()} required for model '{model}' — {hint}"
             )
-        return OpenAI(api_key=key, base_url=base_url), real_model
+        return OpenAI(api_key=key, base_url=base_url, max_retries=0), real_model
 
     key = settings.openai_api_key
     if not key:
         raise RuntimeError(f"OPENAI_API_KEY required for model '{model}'")
-    return OpenAI(api_key=key), model
+    return OpenAI(api_key=key, max_retries=0), model
 
 
 # ── Non-streaming (for fast/cheap calls: table summarization, filter extraction) ──

@@ -33,9 +33,10 @@ def test_compat_strips_prefix_and_sets_base_url(monkeypatch):
     captured = {}
 
     class _FakeClient:
-        def __init__(self, api_key=None, base_url=None):
+        def __init__(self, api_key=None, base_url=None, max_retries=None):
             captured["api_key"] = api_key
             captured["base_url"] = base_url
+            captured["max_retries"] = max_retries
 
     monkeypatch.setattr(llm.settings, "cerebras_api_key", "sk-test", raising=False)
     monkeypatch.setattr("openai.OpenAI", _FakeClient)
@@ -103,9 +104,10 @@ def test_ollama_needs_no_key(monkeypatch):
     captured = {}
 
     class _FakeClient:
-        def __init__(self, api_key=None, base_url=None):
+        def __init__(self, api_key=None, base_url=None, max_retries=None):
             captured["api_key"] = api_key
             captured["base_url"] = base_url
+            captured["max_retries"] = max_retries
 
     monkeypatch.setattr("openai.OpenAI", _FakeClient)
     monkeypatch.setattr(llm.settings, "ollama_base_url", "http://localhost:11434/v1", raising=False)
