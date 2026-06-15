@@ -177,3 +177,38 @@ export async function getFundHoldings(fund: string, top = 25): Promise<FundHoldi
   if (!resp.ok) throw new Error(`Failed to load fund holdings: ${resp.status}`);
   return resp.json();
 }
+
+export type FundChange = 'new' | 'added' | 'trimmed' | 'unchanged' | 'exited';
+
+export interface FundPosition {
+  fund: string;
+  cik: string;
+  ticker: string | null;
+  issuer: string;
+  value: number;
+  shares: number;
+  pct: number;
+  as_of: string;
+  change: FundChange;
+  prev_shares: number;
+}
+
+export interface SmartMoney {
+  ticker: string;
+  /** ISO timestamp of the last index build; "" when not yet built. */
+  refreshed_at: string;
+  /** Tracked superinvestors currently holding the stock, sorted by value desc. */
+  positions: FundPosition[];
+  /** Tracked funds that exited the position last quarter (change="exited"). */
+  exits: FundPosition[];
+}
+
+/** Curated superinvestor universe (Buffett, Burry, Ackman, …) holding a stock —
+ *  i.e. "which notable funds hold this stock", NOT all institutions. */
+export async function getSmartMoney(ticker: string): Promise<SmartMoney> {
+  const resp = await fetch(`${BASE}/smart-money/${encodeURIComponent(ticker)}`, {
+    headers: jsonHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Failed to load smart money: ${resp.status}`);
+  return resp.json();
+}
