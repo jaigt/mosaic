@@ -41,12 +41,12 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       surfaced (not silently swallowed), review the real states post-P0:
       first-run (no filings), mid-ingest, retrieval-returned-nothing,
       backend-down, synthesis-error. Make sure each looks intentional.
-- [ ] **Accessibility sweep.** Filing rows in `Sidebar.tsx` are `role="button"`
-      divs (keyboard handler exists — good); audit the rest for `aria-label`s
-      and add an `ErrorBoundary` at the App root.
-- [ ] **Responsive layout.** Desktop-only today (fixed sidebar width, %-based
-      split pane in `App.tsx`). Decide whether mobile/tablet matters; if so,
-      collapse the sidebar + stack panels under a breakpoint.
+- [x] **Accessibility sweep (2026-06-15).** App-root `ErrorBoundary`; Modal focus
+      trap (Tab/Shift+Tab/Esc/backdrop); aria-live on ingest progress; icon
+      buttons + Sidebar rows audited (already had labels/handlers).
+- [x] **Responsive layout (2026-06-15).** Below the `md` breakpoint the sidebar
+      collapses to an overlay drawer and panels stack (`useMediaQuery` hook);
+      desktop split-pane unchanged.
 - [ ] **Inline `[1]` markers in answer text.** Source *pills* are now clickable
       and focus the SourcePanel; making the inline `[1]`/`[2]` markers inside
       the markdown clickable too needs a custom react-markdown text renderer.
@@ -86,11 +86,10 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 
 ## P2 — Correctness follow-ups
 
-- [ ] **Replace regex table-HTML cleanup with a parser.** `_clean_table_html` /
-      `_add_thead` in `backend/pipeline/ingest.py` are fragile on nested
-      tables, `<th>`, colspans, multi-row headers. Move to `lxml`/`bs4`
-      (already transitive deps via `unstructured`), OR lean on the XBRL path
-      for core statements and keep HTML only for narrative.
+- [x] **Table-HTML cleanup uses a parser now (2026-06-15).** `_clean_table_html`
+      reimplemented with BeautifulSoup(lxml) — robust on nested tables (outermost
+      only), `<th>`, colspans; never throws (returns input unchanged on parse
+      failure). Same signature; 22 tests in `test_table_clean.py`.
 - [ ] **Store `period_of_report` as a metadata column.** `filing_quarter` is a
       *calendar* quarter, which differs from the *fiscal* quarter for off-cycle
       filers (e.g. AAPL). Requires a schema change + re-ingest.
@@ -110,9 +109,9 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 - [ ] **Lock dependencies** (`uv` or `pip-tools`) for reproducible installs.
 - [ ] **Cross-process durability.** `_ingest_tasks` is in-memory per-worker.
       Only matters if this goes multi-worker — then move to Redis/Celery.
-- [ ] **Frontend bundle size.** `npm run build` warns the JS chunk >500 kB
-      (recharts + react-markdown). Code-split / lazy-load the chart + markdown
-      renderer if load time matters.
+- [x] **Frontend bundle size FIXED (2026-06-15).** recharts + react-markdown
+      lazy-loaded (`React.lazy` + `manualChunks`); main JS chunk 731 kB → 78 kB
+      (gzip 224 → 26 kB), >500 kB warning gone.
 
 ---
 
@@ -155,10 +154,26 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       `enable_self_verification`); decision logic is pure + unit-tested.
       New SSE event types: `agent_step`, `verification` (see `/chat` docstring).
 - [x] **Eval harness scaffolding** — see the P2 RAG-quality section above.
-- [ ] **NEXT:** full multi-tool ReAct loop (native function-calling) as a v2 of
-      the agent — `search`/`ingest`/`compare`/`chart` as real tools the model
-      orchestrates, replacing the current fixed pipeline. Frontend agent-step UI +
-      verification badge in progress (dispatched). Live e2e once the key is set.
+### Round 6 (2026-06-15) — ReAct agent, local embeddings, parser, FE polish
+- [x] **Multi-tool ReAct loop** (`backend/agent/react.py`) — model-driven
+      search/ingest/list_corpus/answer loop, default on (`enable_react_agent`),
+      reusing the synthesis + verification tail. Live-validated against
+      gemini-2.5-flash (drove search→answer to a cited multi-year chart).
+- [x] **Local offline embeddings** (`local-bge-large`, default) — removes the
+      embedding key/quota dependency.
+- [x] **Table-HTML cleanup → BeautifulSoup**; **eval set → 24 cases + flexible
+      section matching**; **FE: responsive + a11y + bundle 731→78 kB**.
+- [ ] **NEXT options:** (a) upgrade ReAct to NATIVE provider function-calling
+      (more reliable than text-JSON; per-provider in `llm.py`); (b) a dedicated
+      `compare` tool + comparison charts; (c) Form 4 / 13F trackers.
+
+### TEST-LATER (deferred on free-tier quota — DO THIS)
+- [ ] Re-run the clean embedding A/B (local-bge-large vs gemini-embedding-001)
+      over a corpus WITH proper table summaries, once daily gen quota resets.
+- [ ] Full live ReAct exercise that triggers a real auto-ingest end-to-end
+      (blocked today by the flash-lite per-DAY generation cap + embedding/min cap).
+- [ ] Frontend visual QA of the new responsive/drawer + verification badge in a
+      real browser.
 
 ### Round 4 (2026-06-09) — visual redesign: "The Analyst's Study"
 - [x] **Root-cause spacing bug:** an un-layered `* { margin:0; padding:0 }`
