@@ -310,9 +310,23 @@ Dispatched as 3 file-disjoint parallel agents + inline auth work:
   `gpt-`/`o*`) in `backend/pipeline/llm.py` + `embedder.py`. `EMBEDDING_DIM` is baked
   into the LanceDB schema at table creation — changing the embedding model requires a
   new table / re-ingest.
-- SSE event shape: `{"type": "status"|"chunk"|"sources"|"done"|"error", "data": ...}`.
+- SSE event shape: `{"type": ..., "data": ...}` where type is one of
+  `status`|`agent_step`|`chunk`|`verification`|`sources`|`error`|`done`. The two
+  agentic types (`agent_step`, `verification`) were added in round 5 — see the
+  `/chat` docstring in `main.py` for each event's `data` shape. Adding a new
+  type is backward-safe (unknown types are ignored by older clients).
 - Frontend↔backend contract types live in `frontend/src/api.ts`.
 - Chat is **stateless per request** today (see `conversation_history` gap in §5).
+- **Agentic behaviour lives in `backend/agent/`** (round 5): `plan_auto_ingest`
+  (pure decision: fetch a missing filing on demand) and `verify_answer` (critic
+  pass over the answer vs. sources). Keep the decision helpers pure/injectable so
+  they stay unit-testable without a key. Both gated by `settings.enable_auto_ingest`
+  / `settings.enable_self_verification`.
+- **Ingestion latency invariant** (round 5): table summarization is BATCHED
+  (`summarize_tables`, `table_summary_batch_size` tables per LLM call) — this is
+  the lever that keeps ingest fast under a rate-limited provider. PATH A/B run
+  concurrently. Don't revert to per-table calls. `ingest_filing(on_progress=…)`
+  emits stage events; keep the callback exception-safe.
 
 ---
 

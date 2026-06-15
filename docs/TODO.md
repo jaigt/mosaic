@@ -51,10 +51,13 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 
 ## P2 — RAG quality (improve answer quality)
 
-- [ ] **Evaluation harness.** Hybrid + MMR + reformulation + overlap have NOT
-      been measured on real queries. Build a small eval set (question →
-      expected filing/section) and an offline scorer so future retrieval
-      changes are data-driven, not vibes. Requires a valid API key.
+- [~] **Evaluation harness.** Scaffolding DONE (2026-06-15): pure scorer
+      (`backend/eval/metrics.py` — hit@k, MRR, section/ticker matching),
+      injectable live runner (`backend/eval/harness.py`,
+      `python -m backend.eval.harness`), and a seed set
+      (`backend/eval/eval_set.json`, 8 AAPL cases). All scoring is unit-tested
+      without a key. REMAINING: ingest the referenced filings + run live to get
+      real baseline numbers, then expand the set beyond AAPL.
 - [ ] **Tune reformulation/hybrid/MMR/overlap params** against the eval harness
       (overfetch factor, `mmr_lambda`, RRF `k`, `_TEXT_CHUNK_OVERLAP`,
       `should_reformulate` thresholds).
@@ -107,6 +110,40 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
 ---
 
 ## Done recently (prune once it's old news)
+
+### Round 5 (2026-06-15) — ingestion latency + agentic groundwork
+- [x] **Rebuilt the venv on Python 3.14** (`.venv`), reinstalled all deps, 121
+      backend tests green. Clears the long-standing P3 broken-by-move venv
+      blocker. Invoke `./.venv/bin/python -m pytest backend/tests`.
+- [x] **PATH A (HTML) and PATH B (XBRL) now run concurrently** in
+      `ingest_filing` (was sequential). Both share the single resolved filing
+      object; PATH A fatal, PATH B best-effort. (`backend/pipeline/ingest.py`)
+- [x] **Batched table summarization** — the dominant ingestion cost. Tables are
+      grouped `table_summary_batch_size` (default 6) per LLM call, batches run
+      in parallel under the token bucket (one token per batch). Robust
+      delimiter parse with a per-table fallback on count mismatch
+      (`summarize_tables` in `table_summarizer.py`). **Measured ~45× faster**
+      on AAPL 10-K (86.5s → 1.9s, 31 calls → 6) at a simulated 0.8s/call; same
+      94 chunks. New config knobs: `table_summary_rpm`,
+      `table_summary_concurrency`, `table_summary_batch_size`.
+- [x] **Live ingest progress** — `ingest_filing(on_progress=…)` emits stage
+      events (resolving→fetching→parsing→summarizing_tables→embedding→storing→
+      done); `IngestTask` surfaces `stage`/`detail` via `/ingest/status`.
+- [x] **Agentic core (`backend/agent/`).** Two standout behaviours beyond plain
+      RAG, wired into `_chat_stream`:
+      (1) **Corpus autonomy** — `plan_auto_ingest` detects when a query names a
+      ticker the retrieval didn't surface and the chat auto-ingests that filing
+      from EDGAR mid-answer, then re-searches (emits `agent_step` SSE events).
+      (2) **Self-verification** — `verify_answer` runs a critic pass auditing the
+      answer's claims/numbers against the retrieved sources (emits a
+      `verification` SSE event). Both gated by config (`enable_auto_ingest`,
+      `enable_self_verification`); decision logic is pure + unit-tested.
+      New SSE event types: `agent_step`, `verification` (see `/chat` docstring).
+- [x] **Eval harness scaffolding** — see the P2 RAG-quality section above.
+- [ ] **NEXT:** full multi-tool ReAct loop (native function-calling) as a v2 of
+      the agent — `search`/`ingest`/`compare`/`chart` as real tools the model
+      orchestrates, replacing the current fixed pipeline. Frontend agent-step UI +
+      verification badge in progress (dispatched). Live e2e once the key is set.
 
 ### Round 4 (2026-06-09) — visual redesign: "The Analyst's Study"
 - [x] **Root-cause spacing bug:** an un-layered `* { margin:0; padding:0 }`
