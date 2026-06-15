@@ -1,15 +1,22 @@
 """
 Provider-agnostic LLM layer. Routes to the right SDK based on model name prefix:
-  claude-*   → Anthropic
-  gemini-*   → Google
-  gpt-* / o* → OpenAI
+  claude-*          → Anthropic
+  gemini-*          → Google
+  gpt-* / o*        → OpenAI
+  <provider>/<model> → an OpenAI-compatible endpoint (base_url swap), where
+                       <provider> is one of: cerebras, groq, mistral, ollama.
+                       e.g. "cerebras/llama-3.3-70b", "ollama/qwen2.5".
+
+The "<provider>/" forms exist to escape Gemini's stingy free-tier daily cap:
+Cerebras (~1M tok/day), Groq (~1k req/day), and Mistral (~1B tok/month) all have
+no-credit-card free tiers, and Ollama runs fully local with no key and no limit.
 
 Usage:
   generate("some prompt", model=settings.fast_model)          # non-streaming
   stream_generate("some prompt", model=settings.synthesis_model)  # streaming generator
 
-All three providers are optional at import time — a missing API key only raises
-an error if you actually try to call that provider.
+All providers are optional at import time — a missing API key only raises an
+error if you actually try to call that provider.
 """
 import logging
 from dataclasses import dataclass, field
@@ -128,17 +135,58 @@ class GeminiToolSession:
         return self._send()
 
 
+# OpenAI-compatible providers reached via a base_url swap. Map the "<provider>/"
+# prefix → (base_url, settings attribute holding the key, free-signup hint).
+# Ollama is keyless (local), so its key attribute is None.
+_OPENAI_COMPAT = {
+    "cerebras": ("https://api.cerebras.ai/v1", "cerebras_api_key",
+                 "free key (no card) at https://cloud.cerebras.ai"),
+    "groq": ("https://api.groq.com/openai/v1", "groq_api_key",
+             "free key (no card) at https://console.groq.com/keys"),
+    "mistral": ("https://api.mistral.ai/v1", "mistral_api_key",
+                "free key at https://console.mistral.ai"),
+    "ollama": (None, None, "run a local model: `ollama serve` (https://ollama.com)"),
+}
+
+
 def _provider(model: str) -> str:
     if model.startswith("claude-"):
         return "anthropic"
     if model.startswith("gemini-"):
         return "google"
+    if model.split("/", 1)[0] in _OPENAI_COMPAT:
+        return "openai"  # routed through the OpenAI SDK with a base_url swap
     if model.startswith(("gpt-", "o1", "o3", "o4")):
         return "openai"
     raise ValueError(
-        f"Cannot determine provider for model '{model}'. "
-        "Expected prefix: claude-, gemini-, gpt-, o1/o3/o4."
+        f"Cannot determine provider for model '{model}'. Expected prefix: "
+        "claude-, gemini-, gpt-, o1/o3/o4, or <provider>/<model> for "
+        f"{'/'.join(_OPENAI_COMPAT)}."
     )
+
+
+def _openai_client_and_model(model: str):
+    """Return (OpenAI client, real_model_name). For a "<provider>/<model>" name,
+    swap in that provider's base_url + key; otherwise use native OpenAI."""
+    from openai import OpenAI
+
+    prefix = model.split("/", 1)[0]
+    if prefix in _OPENAI_COMPAT:
+        base_url, key_attr, hint = _OPENAI_COMPAT[prefix]
+        real_model = model.split("/", 1)[1]
+        if prefix == "ollama":
+            return OpenAI(api_key="ollama", base_url=settings.ollama_base_url), real_model
+        key = getattr(settings, key_attr)
+        if not key:
+            raise RuntimeError(
+                f"{key_attr.upper()} required for model '{model}' — {hint}"
+            )
+        return OpenAI(api_key=key, base_url=base_url), real_model
+
+    key = settings.openai_api_key
+    if not key:
+        raise RuntimeError(f"OPENAI_API_KEY required for model '{model}'")
+    return OpenAI(api_key=key), model
 
 
 # ── Non-streaming (for fast/cheap calls: table summarization, filter extraction) ──
@@ -174,13 +222,9 @@ def _generate_google(prompt: str, model: str) -> str:
 
 
 def _generate_openai(prompt: str, model: str) -> str:
-    from openai import OpenAI
-    key = settings.openai_api_key
-    if not key:
-        raise RuntimeError(f"OPENAI_API_KEY required for model '{model}'")
-    client = OpenAI(api_key=key)
+    client, real_model = _openai_client_and_model(model)
     response = client.chat.completions.create(
-        model=model,
+        model=real_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1024,
     )
@@ -224,14 +268,10 @@ def _stream_google(prompt: str, model: str) -> Generator[str, None, None]:
 
 
 def _stream_openai(prompt: str, model: str) -> Generator[str, None, None]:
-    from openai import OpenAI
-    key = settings.openai_api_key
-    if not key:
-        raise RuntimeError(f"OPENAI_API_KEY required for model '{model}'")
-    logger.info(f"Synthesizing with OpenAI: {model}")
-    client = OpenAI(api_key=key)
+    client, real_model = _openai_client_and_model(model)
+    logger.info(f"Synthesizing via OpenAI-compatible endpoint: {model}")
     with client.chat.completions.create(
-        model=model,
+        model=real_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2048,
         stream=True,

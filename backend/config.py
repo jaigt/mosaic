@@ -3,9 +3,19 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    google_api_key: str
+    google_api_key: str = ""     # Optional — needed for gemini-* models
     anthropic_api_key: str = ""  # Optional — needed for claude-* models
     openai_api_key: str = ""     # Optional — needed for gpt-* / o* models
+    # OpenAI-compatible free/cheap providers, reached by prefixing the model with
+    # "<provider>/", e.g. SYNTHESIS_MODEL="cerebras/llama-3.3-70b". All three have
+    # a no-credit-card free tier far more generous than Gemini's daily cap:
+    #   cerebras → ~1M tokens/DAY      groq → ~1k req/day, fastest streaming
+    #   mistral  → ~1B tokens/MONTH
+    # Ollama ("ollama/<model>") needs no key at all — fully local, no limits.
+    cerebras_api_key: str = ""
+    groq_api_key: str = ""
+    mistral_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434/v1"
     sec_user_agent: str
     lancedb_path: str = "./data/lancedb"
     # Stable GA models (verified live 2026-06-15). NOT *-preview: this project

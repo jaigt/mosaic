@@ -1,12 +1,23 @@
 # Hosting & AI Options — Decision Aid
 
 > **Status: brainstorm / decision aid for LATER.** Nothing here commits you to anything. You are currently
-> solo, on Google AI Studio's free tier, and your only real pain is *rate limits*, not dollars. This doc
-> exists so that when you decide to put this in front of other people, you can pick fast instead of
-> re-researching from scratch.
+> solo, and your only real pain is *rate limits*, not dollars. This doc exists so that when you decide to put
+> this in front of other people, you can pick fast instead of re-researching from scratch.
 >
 > **All prices were pulled in June 2026 and WILL drift.** Re-verify before you commit money. Sources are
 > cited inline.
+
+> ### ⚡ TL;DR for "what can I do absolutely free *right now*"
+> Gemini's free tier was cut 50–80% in late 2025 (~250 req/day on Flash) — that daily cap is what's blocking you
+> from building and demoing. **Fix, already wired into the code:** the LLM router now accepts a
+> `"<provider>/<model>"` prefix (`cerebras` / `groq` / `mistral` / `ollama`), so you can point synthesis + the
+> fast model at a far more generous free tier with **zero code change — just `.env`**:
+> - **Cerebras** — ~**1M tokens/day** free, no credit card, very fast. → `SYNTHESIS_MODEL=cerebras/llama-3.3-70b`
+> - **Mistral** — ~**1B tokens/month** free. · **Groq** — ~1k req/day, fastest streaming.
+> - **Ollama** — fully **local, no key, no limit, no signup** → `SYNTHESIS_MODEL=ollama/qwen2.5`.
+>
+> Embeddings are already local ($0). So with Cerebras *or* Ollama you can build/iterate **unlimited at $0**.
+> Demoing to others still needs hosting (§1) — but it's no longer gated on a daily LLM cap. See §2.
 
 ## 0. The shape of this project (why generic advice won't do)
 
@@ -59,6 +70,25 @@ host *that* somewhere with a persistent volume. Do not try to force both onto on
 
 Pricing sources: Fly.io VM ~$2/mo + volumes $0.15/GB/mo ([Fly docs](https://fly.io/docs/about/pricing/), [costbench](https://costbench.com/software/developer-tools/flyio/)); Render disk $0.25/GB/mo, Pro workspace $25/mo ([Render pricing](https://render.com/pricing)); Lightsail $3.50 (IPv6-only) / $5 (IPv4) entry ([netcomlearning](https://www.netcomlearning.com/blog/aws-lightsail)); EC2 t4g.small free trial extended to Dec 31 2026 ([AWS re:Post](https://repost.aws/articles/ARi_gf6vo6TuqNtMQdiYPKyA/announcing-amazon-ec2-t4g-free-trial-extension)); Hetzner CPX22 ~$9.49/mo post-April-2026 ([costgoat](https://costgoat.com/pricing/hetzner), [Better Stack](https://betterstack.com/community/guides/web-servers/digitalocean-vs-hetzner/)); DigitalOcean Basic ~$24/mo ([Better Stack](https://betterstack.com/community/guides/web-servers/digitalocean-vs-hetzner/)); Vercel Hobby free / non-commercial ([costbench](https://costbench.com/software/developer-tools/vercel/)); Cloudflare Pages unlimited bandwidth free, Workers $5 base ([DevToolReviews](https://www.devtoolreviews.com/reviews/cloudflare-pages-pricing-bandwidth-limits-2026), [morphllm](https://www.morphllm.com/comparisons/cloudflare-workers-vs-vercel)).
 
+> **Free-tier reality, updated June 2026 (these changed — the rows above are pricing, not free tiers):**
+> - **Fly.io no longer has a free tier** for new users — credit card required, trial only (~2 VM-hours / 7 days).
+> - **Railway has no permanent free tier** — a one-time $5 trial credit, then the Hobby plan at $5/mo.
+> - **Render still has a real free tier** (512 MB web service, $0) — but it **cold-starts after 15 min idle**
+>   (30–60 s spin-up) and a *persistent disk* requires a paid instance.
+>
+> **All-in-one (one platform hosts FE + BE + disk, one bill, one dashboard):** with Fly/Railway free tiers gone
+> and a single dashboard being less hassle solo, going all-in-one is now competitive with the "split" below:
+> - **Railway** — best DX; one project = static FE + FastAPI BE + volume (+ a one-click Postgres if you adopt
+>   pgvector). ~$5/mo, no free tier. **Best "keep the current architecture, one platform" answer.**
+> - **Render** — static site + web service + managed Postgres + disk in one place; has a free tier (cold starts).
+> - **Single-vendor incl. AI** (Cloudflare Pages+Workers+**Workers AI**, or Vercel + AI Gateway) gets you
+>   FE+BE+inference on one bill — **but only if you re-architect to stateless** (pgvector + hosted embeddings);
+>   they can't run today's FastAPI+ONNX+LanceDB. **Replit** is genuinely all-in-one (dev+host+AI) but weak for a
+>   production FastAPI-with-disk. Sources:
+>   [Railway vs Render vs Fly.io (solo, 2026)](https://devtoolpicks.com/blog/railway-vs-render-vs-fly-io-solo-developers-2026),
+>   [Fly.io free tier 2026](https://www.saaspricepulse.com/blog/flyio-free-tier-2026),
+>   [Render real free tiers 2026](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026).
+
 ### Why Lambda / Workers / Vercel-backend keep failing for *this* app
 Embedded LanceDB is the issue, not FastAPI. These platforms give you an ephemeral filesystem that vanishes
 between invocations. You'd have to mount network storage (EFS) or push LanceDB to object storage, both of which
@@ -69,6 +99,35 @@ static frontend — use them there.
 > Caveat — **uncertain:** LanceDB *can* be pointed at object storage (S3/R2) in some configs, which would in
 > principle unlock serverless. But for a solo side-project this adds latency and complexity for no real benefit.
 > Treat "serverless backend" as a non-goal unless you later re-architect deliberately.
+
+### The vector store is the decision that controls everything
+
+Every "no serverless backend" conclusion above rests on **one** fact: LanceDB is *embedded and on-disk*. Swap it
+for a **network/managed** vector store and the backend becomes stateless — and most of the cheap/free hosting
+options that were ruled out re-open. So it's worth knowing the alternatives before committing.
+
+| Alternative | Model | Free tier (June 2026) | Why you'd switch |
+|---|---|---|---|
+| **Stay on LanceDB (embedded)** | On-disk lib | $0, no account | Simplest, fastest local reads, corpus is reproducible. **Forces a box with a disk.** |
+| **pgvector** (Postgres ext.) | Server DB | **Free** on Supabase / Neon free tiers | Backend goes stateless; one store for vectors *and* app/user data; you likely already know Postgres |
+| **Qdrant Cloud** | Managed | **1 GB cluster, no card** | Purpose-built, strong hybrid search |
+| **Chroma Cloud / Zilliz** | Managed | Generous free / 1 collection | Easy managed RAG stores |
+| **Turbopuffer** | Object-storage-backed | Usage-based, very cheap | Built *for* serverless — vectors live on S3/R2 |
+| **Pinecone** | Serverless | ~$70/mo at real scale | Most mature; priciest |
+| **LanceDB Cloud** | Managed Lance | (re-verify rates) | Least migration — same engine, just hosted |
+
+**Does this change the recommendation? It forks it:**
+- **Keep embedded LanceDB** → everything below stands; you need a persistent disk.
+- **Move to pgvector (Supabase/Neon free)** → the backend can be stateless, and *"avoid Lambda/Workers/Vercel"*
+  no longer applies — cheaper/serverless/all-in-one hosting opens up.
+
+**The catch most comparisons miss:** swapping the vector DB *alone* does **not** fully unlock serverless, because
+your **local `bge-large` ONNX embeddings** are themselves a serverless-blocker — a cold-starting function loading
+a ~1 GB ONNX model per invocation is miserable. To truly go serverless you'd *also* move embeddings to a hosted
+embedder (Gemini/OpenAI/Voyage). **Net: the vector-store choice and the embedding choice have to move together.**
+At solo scale, embedded LanceDB + local embeddings is still the simplest $0 option; the alternatives buy
+statelessness you don't yet need. Pricing sources: [MarkTechPost vector DB 2026](https://www.marktechpost.com/2026/05/10/best-vector-databases-in-2026-pricing-scale-limits-and-architecture-tradeoffs-across-nine-leading-systems/),
+[buildmvpfast vector DB pricing (June 2026)](https://www.buildmvpfast.com/api-costs/vector-db).
 
 ### Recommended split
 - **Frontend (React/Vite static build): Cloudflare Pages.** Free, global CDN, unlimited bandwidth, commercial use
@@ -92,6 +151,28 @@ or want the absolute lowest fixed cost.
 Your routing layer is provider-agnostic, so this is purely a price/quality/latency shopping exercise. You have
 **two roles**: (a) **synthesis** — the user-facing answer, quality matters; (b) **fast/cheap** — table
 summaries & verification, where you want dirt-cheap and fast.
+
+### Free tiers — what's actually generous (and what's now wired in)
+
+"Free with no rate limits" doesn't exist — the limit *is* how a provider caps its cost. But you don't have to be
+stuck on Gemini's: **Google cut the AI Studio free tier 50–80% in late 2025** (~250 req/day, 10 RPM on Flash),
+and that daily cap is your build/demo blocker. Other free tiers are dramatically more generous:
+
+| Provider | Free tier (no credit card) | Notes |
+|---|---|---|
+| **Cerebras** | ~**1M tokens/day** | Most generous by volume; very fast. **Best free default.** |
+| **Mistral** (la Plateforme) | ~**1B tokens/month** | Could cover an entire side-project alone |
+| **Groq** | ~30 RPM / **1k req/day** (Llama 3.3 70B) | Fastest token streaming |
+| **GitHub Models** | 100+ models, generous daily (preview) | Good for experimentation |
+| **Gemini Flash** (status quo) | ~250 req/day, 10 RPM | What's biting you now |
+| **Ollama (local)** | **unlimited, $0, no signup** | Quality/speed bound by your machine |
+
+**Wired into the code (June 2026):** the router accepts `"<provider>/<model>"` for `cerebras`/`groq`/`mistral`/
+`ollama` via an OpenAI-compatible `base_url` swap — switching is a one-line `.env` change, no code. And because
+the router is provider-agnostic you can **fan out across providers** (each has independent limits) to multiply
+free capacity. Sources:
+[TokenMix free LLM APIs 2026](https://tokenmix.ai/blog/free-llm-apis-2026-every-provider-free-tier-tested),
+[Flywheel free LLM tiers 2026](https://wetheflywheel.com/en/ai-model-access/free-llm-api-tiers-2026/).
 
 ### Rough $/1M tokens (input / output), ~June 2026
 
@@ -124,9 +205,12 @@ tier is **rate limits, not cost** — a paid Gemini key removes the per-minute a
 you now.
 
 ### Recommendations
-- **Cheapest path, lowest friction:** Get a **paid Gemini API key** and stay on **Gemini 2.5 Flash** for
-  synthesis, **Flash-Lite** for the fast role. Zero code change (same provider prefix), kills your rate-limit
-  pain, costs ~cents/month at your volume. **This is the single highest-leverage move available to you.**
+- **$0, unblock today (recommended for the POC):** switch synthesis + fast model to **`cerebras/llama-3.3-70b`**
+  (~1M tok/day free, no card, fast) — or **`ollama/qwen2.5`** for fully-local/offline with no key or limit.
+  One-line `.env` change; the routing is already in the code. Removes the daily-cap pain at $0.
+- **Cheapest *paid* path, lowest friction:** Get a **paid Gemini API key** and stay on **Gemini 2.5 Flash** for
+  synthesis, **Flash-Lite** for the fast role. Zero code change, costs ~cents/month at your volume. Worth it once
+  you want the polish/quality of Flash without juggling free-tier providers.
 - **Cheapest absolute $/token:** **Amazon Nova Lite** (synthesis) + **Nova Micro** (fast role) via Bedrock —
   roughly 5–7× cheaper than Flash. But it adds AWS/Bedrock setup overhead and the savings are pennies at your
   scale, so only worth it if you're already on AWS or expect real volume.
@@ -217,13 +301,14 @@ deployment forces it.
 
 ## 5. Recommended phased path
 
-### Phase 0 — POC now (free)
-**Goal:** kill the rate-limit pain, keep building.
+### Phase 0 — POC now (truly free)
+**Goal:** kill the rate-limit pain, keep building, $0.
 - **Hosting:** your laptop (or EC2 t4g.small free trial, $0 through Dec 31 2026).
-- **AI:** swap AI Studio free key → **paid Gemini API key**, stay on **Gemini 2.5 Flash** synthesis +
-  **Flash-Lite** fast role. Removes per-minute/per-day caps.
+- **AI:** point the models at a generous free tier — **`cerebras/llama-3.3-70b`** (~1M tok/day, no card) or
+  fully-local **`ollama/qwen2.5`** (no key, no limit). One-line `.env` change; routing already shipped.
+  (A paid Gemini key is the alternative if you'd rather stay on Flash — pennies/mo.)
 - **Embeddings:** local `bge-large`, $0.
-- **Cost: ~$0–2/mo** (just LLM pennies). One-line guardrail: set a Google Cloud budget alert.
+- **Cost: $0** (Cerebras/Ollama free + local embeddings). If you use a paid LLM key instead, set a budget alert.
 
 ### Phase 1 — Small public beta (cheap)
 **Goal:** real URL, a handful of users, predictable bill, don't get surprise-billed.
@@ -253,11 +338,17 @@ deployment forces it.
 
 ## TL;DR
 
-- **Your problem today is rate limits, not money.** The single best move: **buy a paid Gemini API key**, keep
-  Gemini 2.5 Flash for synthesis + Flash-Lite for the fast role. Costs pennies/month, no code change, pain gone.
-- **Split the deploy:** static React FE on **Cloudflare Pages** (free, commercial-OK); FastAPI + on-disk LanceDB
-  backend on **Fly.io or Railway** (real persistent volume). **Avoid Lambda/Workers/Vercel for the backend** —
-  embedded LanceDB needs a persistent disk and a long-lived process.
+- **Your problem today is rate limits, not money — and it's fixable at $0.** Gemini's free tier was gutted
+  (~250 req/day). The router now takes `"<provider>/<model>"`, so switch to **`cerebras/llama-3.3-70b`**
+  (~1M tok/day free, no card) or fully-local **`ollama/qwen2.5`** (no key, no limit) with a one-line `.env`
+  change. A paid Gemini key (pennies/mo) is the alternative if you prefer Flash's quality.
+- **Vector store is the pivot:** *embedded LanceDB* is the single fact that forces a disk and rules out
+  serverless. Moving to **pgvector (Supabase/Neon free)** makes the backend stateless and re-opens cheaper
+  hosting — but you'd *also* have to move embeddings off local CPU, so don't bother until you need it.
+- **Deploy:** keep embedded LanceDB → either **split** (static FE on **Cloudflare Pages**, free + commercial-OK;
+  FastAPI+disk backend on a real box) **or go all-in-one** on **Railway** (~$5/mo) / **Render** (free tier, cold
+  starts) — one platform for FE+BE+disk. Heads-up: **Fly.io and Railway no longer have free tiers** (2026).
+  **Avoid Lambda/Workers/Vercel for the backend** unless you re-architect to a stateless store.
 - **Embeddings: keep them local ($0).** That decision already solved your worst throttle. Only revisit for
   ingestion speed or multi-host setups.
 - **Cheapest-token path** (if you ever want it): **Amazon Nova Lite/Micro** on Bedrock, ~5–7× cheaper than
