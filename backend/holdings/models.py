@@ -109,3 +109,62 @@ class FundHoldings:
             for h in self.holdings[:top]
         ]
         return head + "\n" + "\n".join(lines)
+
+
+@dataclass
+class FundPosition:
+    """One tracked fund's position in a single stock (with Q/Q change)."""
+
+    fund: str
+    cik: str
+    ticker: Optional[str]
+    issuer: str
+    value: float
+    shares: float
+    pct: float                 # % of the fund's reported book
+    as_of: str                 # the fund's 13F report period
+    change: str                # new | added | trimmed | unchanged | exited
+    prev_shares: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "fund": self.fund, "cik": self.cik, "ticker": self.ticker, "issuer": self.issuer,
+            "value": self.value, "shares": self.shares, "pct": self.pct, "as_of": self.as_of,
+            "change": self.change, "prev_shares": self.prev_shares,
+        }
+
+
+@dataclass
+class TickerOwnership:
+    """Which TRACKED (curated superinvestor) funds hold a given ticker.
+
+    Not all 13F filers — only the curated universe (see funds.json). EDGAR has no
+    global holdings reverse-index, so this is high-signal smart-money tracking,
+    not exhaustive institutional ownership.
+    """
+
+    ticker: str
+    refreshed_at: str
+    positions: list = field(default_factory=list)   # current holders (shares>0), by value desc
+    exits: list = field(default_factory=list)        # funds that exited last quarter
+
+    def to_dict(self) -> dict:
+        return {
+            "ticker": self.ticker, "refreshed_at": self.refreshed_at,
+            "positions": [p.to_dict() for p in self.positions],
+            "exits": [p.to_dict() for p in self.exits],
+        }
+
+    def summary_text(self, top: int = 12) -> str:
+        if not self.positions and not self.exits:
+            return (
+                f"None of the tracked superinvestor funds currently report a "
+                f"position in {self.ticker}."
+            )
+        lines = [f"Tracked funds holding {self.ticker} (as of {self.refreshed_at[:10]}):"]
+        for p in self.positions[:top]:
+            tag = f" [{p.change}]" if p.change and p.change != "unchanged" else ""
+            lines.append(f"  {p.fund}: ${p.value:,.0f}, {p.shares:,.0f} sh ({p.pct:.1f}% of book){tag}")
+        for p in self.exits[:top]:
+            lines.append(f"  {p.fund}: EXITED (held {p.prev_shares:,.0f} sh prior quarter)")
+        return "\n".join(lines)

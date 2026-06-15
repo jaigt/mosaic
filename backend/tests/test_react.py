@@ -217,6 +217,25 @@ def test_fund_holdings_tool_adds_source():
     assert result.sources[0].chunk.document_type == "13F"
 
 
+def test_funds_holding_tool_adds_source():
+    from backend.holdings.models import FundPosition, TickerOwnership
+    own = TickerOwnership(
+        ticker="AAPL", refreshed_at="2026-06-15T00:00:00Z",
+        positions=[FundPosition("Buffett", "1", "AAPL", "APPLE", 6e10, 3e8, 22.0, "2026-03-31", "trimmed", 4e8)],
+    )
+    gen = _scripted_generate(
+        {"tool": "funds_holding", "input": {"ticker": "AAPL"}},
+        {"tool": "answer", "input": {}},
+    )
+    events = []
+    agent = _agent(gen)
+    agent._funds_holding_fn = lambda t: own
+    result = agent.run("Which superinvestors own AAPL?", [], {}, events.append)
+    assert any(e["kind"] == "smart_money" for e in events)
+    assert [s.chunk.chunk_id for s in result.sources] == ["SMARTMONEY_AAPL"]
+    assert "Buffett" in result.sources[0].chunk.text_content
+
+
 def test_native_loop_with_fake_session():
     """Native mode: a fake tool session drives search → (text = done), sources
     accumulate, no JSON parsing involved."""

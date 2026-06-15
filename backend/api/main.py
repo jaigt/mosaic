@@ -29,6 +29,8 @@ from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
 from backend.agent import ReactAgent, plan_auto_ingest, verify_answer
 from backend.holdings import get_fund_holdings, get_insider_activity
+from backend.holdings import funds_holding as funds_holding_lookup
+from backend.holdings import refresh as refresh_smart_money
 from backend.pipeline.ingest import ingest_filing
 from backend.pipeline.llm import generate, stream_generate, supports_native_tools
 from backend.pipeline.store import get_table
@@ -311,9 +313,7 @@ async def insiders(ticker: str, limit: int = 12):
 
 @app.get("/institutions/{fund}", dependencies=[Depends(enforce_rate_limit)])
 async def institutions(fund: str, top: int = 25):
-    """A fund's latest 13F top holdings (fund = its ticker/CIK, e.g. BRK-B).
-    NOTE: 13F is per-fund; 'which funds hold ticker X' is not supported (EDGAR
-    has no holdings reverse-index)."""
+    """A fund's latest 13F top holdings (fund = its ticker/CIK, e.g. BRK-B)."""
     top = max(1, min(top, 100))
     try:
         holdings = await asyncio.to_thread(get_fund_holdings, fund, top)
@@ -321,6 +321,31 @@ async def institutions(fund: str, top: int = 25):
     except Exception:
         logger.exception("Failed to fetch fund holdings")
         raise HTTPException(status_code=502, detail="Failed to fetch fund holdings")
+
+
+@app.get("/smart-money/{ticker}")
+async def smart_money(ticker: str):
+    """Which TRACKED superinvestor funds (see backend/holdings/funds.json) hold
+    this ticker, with Q/Q change. Reads the cached index — fast, no fetch. Run
+    POST /smart-money/refresh to (re)build the index first."""
+    try:
+        ownership = await asyncio.to_thread(funds_holding_lookup, ticker)
+        return ownership.to_dict()
+    except Exception:
+        logger.exception("Failed to read smart-money index")
+        raise HTTPException(status_code=500, detail="Failed to read smart-money index")
+
+
+@app.post("/smart-money/refresh", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
+async def smart_money_refresh():
+    """Rebuild the smart-money index: fetch each tracked fund's latest+prior 13F
+    from EDGAR. Takes ~10-20s for the default roster; EDGAR-only (no LLM/key)."""
+    try:
+        result = await asyncio.to_thread(refresh_smart_money)
+        return result
+    except Exception:
+        logger.exception("Smart-money refresh failed")
+        raise HTTPException(status_code=502, detail="Smart-money refresh failed")
 
 
 @app.post("/chat", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
@@ -453,6 +478,7 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                 native=native,
                 insider_fn=get_insider_activity,
                 fund_fn=get_fund_holdings,
+                funds_holding_fn=funds_holding_lookup,
             )
             holder: dict = {}
             async for ev in _react_gather(

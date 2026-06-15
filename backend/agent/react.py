@@ -78,6 +78,14 @@ _TOOL_SPECS = [
             "required": ["fund"],
         },
     ),
+    ToolSpec(
+        name="funds_holding",
+        description="Which tracked value-investing superinvestor funds (Buffett, Burry, Ackman, Klarman, …) hold a given stock, their position size, and whether they added/trimmed/exited last quarter. Use for 'is any smart money in <ticker>', 'who owns <ticker>'.",
+        parameters={
+            "properties": {"ticker": {"type": "string", "description": "the stock ticker to look up holders of"}},
+            "required": ["ticker"],
+        },
+    ),
 ]
 
 _NATIVE_SYSTEM_PROMPT = """\
@@ -121,6 +129,9 @@ Available tools:
 - "get_fund_holdings": a named institution's latest 13F top holdings. The input
     is the FUND's ticker/CIK (e.g. BRK-B for Berkshire), not the stock you're
     researching. input: {"fund": str}
+- "funds_holding": which tracked value-investing superinvestors hold a given
+    stock (position size + added/trimmed/exited last quarter). Use for
+    "is smart money in <ticker>" / "who owns <ticker>". input: {"ticker": str}
 - "answer": stop gathering — you have enough evidence to answer.
     input: {}
 
@@ -231,6 +242,7 @@ class ReactAgent:
         session_factory: Optional[Callable] = None,
         insider_fn: Optional[Callable] = None,
         fund_fn: Optional[Callable] = None,
+        funds_holding_fn: Optional[Callable] = None,
     ):
         self._generate = generate_fn
         self._retrieve = retrieve_fn
@@ -238,6 +250,7 @@ class ReactAgent:
         self._list_corpus = list_corpus_fn
         self._insider_fn = insider_fn
         self._fund_fn = fund_fn
+        self._funds_holding_fn = funds_holding_fn
         self._model = model
         self._max_steps = max_steps
         # Native function-calling mode (more reliable than parsing JSON from
@@ -370,6 +383,8 @@ class ReactAgent:
             return self._do_insider(action.input, filters, on_event)
         if action.tool == "get_fund_holdings":
             return self._do_fund(action.input, on_event)
+        if action.tool == "funds_holding":
+            return self._do_funds_holding(action.input, filters, on_event)
         # Unknown tool — nudge the model to answer.
         on_event({"kind": "note", "label": f"Unknown tool '{action.tool}', wrapping up."})
         return f"Unknown tool '{action.tool}'. Call 'answer' if you have enough evidence."
@@ -440,6 +455,23 @@ class ReactAgent:
         text = holdings.summary_text()
         self._last_retrieved = [_synthetic_source(
             f"FUND_{fund.upper()}", fund.upper(), "Institutional Holdings (13F)", text, doc_type="13F",
+        )]
+        return text
+
+    def _do_funds_holding(self, inp: dict, filters: dict, on_event) -> str:
+        if self._funds_holding_fn is None:
+            return "Smart-money holdings data is unavailable."
+        ticker = (inp.get("ticker") or filters.get("ticker") or "").strip().upper()
+        if not ticker:
+            return "funds_holding needs a ticker."
+        on_event({"kind": "smart_money", "label": f"Checking which superinvestors hold {ticker}…"})
+        try:
+            ownership = self._funds_holding_fn(ticker)
+        except Exception as e:  # noqa: BLE001
+            return f"Smart-money lookup for {ticker} failed: {e}"
+        text = ownership.summary_text()
+        self._last_retrieved = [_synthetic_source(
+            f"SMARTMONEY_{ticker}", ticker, "Superinvestor Ownership (13F)", text, doc_type="13F",
         )]
         return text
 

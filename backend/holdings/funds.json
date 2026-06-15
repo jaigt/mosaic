@@ -1,0 +1,16 @@
+{
+  "_comment": "Curated value-investing superinvestor 13F filers tracked by the smart-money tracker. EDIT THIS to add/remove funds (name + SEC CIK). All CIKs verified live 2026-06-15 to resolve to a 13F-HR with holdings. Refresh the index after editing: POST /smart-money/refresh.",
+  "funds": [
+    {"name": "Berkshire Hathaway (Buffett)", "cik": "1067983"},
+    {"name": "Scion Asset Management (Burry)", "cik": "1649339"},
+    {"name": "Pershing Square (Ackman)", "cik": "1336528"},
+    {"name": "Baupost Group (Klarman)", "cik": "1061768"},
+    {"name": "Greenlight Capital (Einhorn)", "cik": "1079114"},
+    {"name": "Appaloosa (Tepper)", "cik": "1656456"},
+    {"name": "Third Point (Loeb)", "cik": "1040273"},
+    {"name": "Pabrai Investment Funds", "cik": "1549575"},
+    {"name": "Himalaya Capital (Li Lu)", "cik": "1709323"},
+    {"name": "Fundsmith (Terry Smith)", "cik": "1569205"},
+    {"name": "Akre Capital", "cik": "1112520"}
+  ]
+}

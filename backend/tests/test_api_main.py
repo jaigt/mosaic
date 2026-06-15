@@ -120,6 +120,28 @@ def test_institutions_endpoint(monkeypatch):
     assert r.json()["holdings"][0]["ticker"] == "AAPL"
 
 
+def test_smart_money_endpoint(monkeypatch):
+    from backend.holdings.models import FundPosition, TickerOwnership
+    own = TickerOwnership(
+        ticker="AAPL", refreshed_at="2026-06-15T00:00:00Z",
+        positions=[FundPosition("Buffett", "1", "AAPL", "APPLE", 6e10, 3e8, 22.0, "2026-03-31", "trimmed", 4e8)],
+    )
+    monkeypatch.setattr(main, "funds_holding_lookup", lambda ticker: own)
+    client = _client(monkeypatch)
+    r = client.get("/smart-money/AAPL")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == "AAPL"
+    assert body["positions"][0]["fund"] == "Buffett" and body["positions"][0]["change"] == "trimmed"
+
+
+def test_smart_money_refresh_endpoint(monkeypatch):
+    monkeypatch.setattr(main, "refresh_smart_money", lambda: {"funds": 3, "rows": 120, "errors": []})
+    client = _client(monkeypatch)
+    r = client.post("/smart-money/refresh")
+    assert r.status_code == 200 and r.json()["funds"] == 3
+
+
 def test_insiders_endpoint_error_is_502(monkeypatch):
     def boom(ticker, limit):
         raise RuntimeError("edgar down")
