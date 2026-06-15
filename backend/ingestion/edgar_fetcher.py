@@ -77,6 +77,7 @@ def resolve_filing(
         "filing_year": filing_year,
         "filing_quarter": quarter,
         "filing_date": str(filing.filing_date),
+        "period_of_report": str(period_end),
         "accession_number": filing.accession_number,
     }
     return filing, metadata

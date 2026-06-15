@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   ValueRAG design tokens — "The Analyst's Study"
+   Mosaic design tokens — default theme: "The Analyst's Study"
    An engraved-ledger aesthetic: deep racing-green ink surfaces, ivory type,
    brass-gold accents used like foil stamping, didone display serif (Gloock)
    for an etched-certificate voice. The signature move: retrieved SEC sources
@@ -36,8 +36,8 @@
   --color-paper-200: #e4ddc7;
   --color-fg-100: #e9e6d7;
   --color-fg-200: #bfc4ad;
-  --color-fg-300: #8e9a83;
-  --color-fg-400: #66745f;
+  --color-fg-300: #9aa790; /* lifted for legibility on small dim labels */
+  --color-fg-400: #7c8a73; /* lifted for legibility on small dim labels */
 
   /* Brass / gold — the foil-stamp accent (primary) ------------------------- */
   --color-amber-200: #f1e2ae;
@@ -45,6 +45,10 @@
   --color-amber-400: #d2ad52;
   --color-amber-500: #b3903a;
   --color-amber-600: #8a6c27;
+
+  /* Text color that sits on top of the accent (primary button, selection).
+     Study = dark ink on gold foil; modern themes override to white on blue. */
+  --color-on-accent: #0b120e;
 
   /* Ledger mint — positive / sources ---------------------------------------- */
   --color-ledger-300: #99dfb0;
@@ -101,6 +105,116 @@
   --paper-accent: #8a6c27;
 }
 
+/* ============================================================================
+   THEME OVERRIDES — redefine the @theme token values per theme. Tailwind
+   utilities (bg-ink-800, text-amber-400, …) resolve these variables at runtime,
+   so components stay unchanged; only the variable values differ per theme.
+   `html[data-theme="…"]` outranks :root, and these blocks come after @theme.
+   `study` (default / no attribute) keeps the engraved-ledger look untouched.
+   ========================================================================== */
+
+/* ---- modern-dark — Linear/Vercel sleek; neutral surfaces, electric blue ---- */
+html[data-theme="modern-dark"] {
+  --font-display: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --color-ink-950: #08090a;
+  --color-ink-900: #0b0c0e;
+  --color-ink-850: #0f1012;
+  --color-ink-800: #131417;
+  --color-ink-700: #1a1c20;
+  --color-ink-600: #26282e;
+  --color-ink-500: #34373f;
+
+  --color-line-strong: #383b42;
+  --color-line: #232529;
+  --color-line-soft: #1a1c20;
+
+  --color-paper-100: #f7f8f8;
+  --color-paper-200: #e6e8ea;
+  --color-fg-100: #f0f1f2;
+  --color-fg-200: #c4c7cc;
+  --color-fg-300: #9ca3af;
+  --color-fg-400: #71757d;
+
+  --color-amber-200: #bfdbfe;
+  --color-amber-300: #93c5fd;
+  --color-amber-400: #60a5fa;
+  --color-amber-500: #3b82f6;
+  --color-amber-600: #2563eb;
+
+  --color-ledger-300: #6ee7b7;
+  --color-ledger-400: #34d399;
+  --color-ledger-500: #10b981;
+  --color-ledger-600: #059669;
+
+  --color-crimson-400: #f87171;
+  --color-crimson-500: #ef4444;
+  --color-azure-400: #38bdf8;
+
+  --color-on-accent: #ffffff;
+
+  --paper-bg: #16181c;
+  --paper-bg-deep: #121317;
+  --paper-ink: #e6e8ea;
+  --paper-ink-strong: #f7f8f8;
+  --paper-muted: #9ca3af;
+  --paper-line: #2a2d33;
+  --paper-line-strong: #3a3e45;
+  --paper-accent: #60a5fa;
+}
+
+/* ---- modern-light — Stripe/Linear light; clean white surfaces, blue ---- */
+html[data-theme="modern-light"] {
+  --font-display: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --color-ink-950: #f5f6f8;
+  --color-ink-900: #ffffff;
+  --color-ink-850: #ffffff;
+  --color-ink-800: #ffffff;
+  --color-ink-700: #eef1f5;
+  --color-ink-600: #e2e8f0;
+  --color-ink-500: #cbd5e1;
+
+  --color-line-strong: #cbd5e1;
+  --color-line: #e2e8f0;
+  --color-line-soft: #eef1f5;
+
+  --color-paper-100: #0f172a;
+  --color-paper-200: #1e293b;
+  --color-fg-100: #0f172a;
+  --color-fg-200: #334155;
+  --color-fg-300: #475569;
+  --color-fg-400: #64748b;
+
+  --color-amber-200: #bfdbfe;
+  --color-amber-300: #60a5fa;
+  --color-amber-400: #2563eb;
+  --color-amber-500: #1d4ed8;
+  --color-amber-600: #1e40af;
+
+  --color-ledger-300: #34d399;
+  --color-ledger-400: #059669;
+  --color-ledger-500: #047857;
+  --color-ledger-600: #065f46;
+
+  --color-crimson-400: #ef4444;
+  --color-crimson-500: #dc2626;
+  --color-azure-400: #0284c7;
+
+  --color-on-accent: #ffffff;
+
+  --paper-bg: #ffffff;
+  --paper-bg-deep: #f8fafc;
+  --paper-ink: #1e293b;
+  --paper-ink-strong: #0f172a;
+  --paper-muted: #64748b;
+  --paper-line: #e2e8f0;
+  --paper-line-strong: #cbd5e1;
+  --paper-accent: #2563eb;
+}
+
 /* NOTE: no hand-rolled `* { margin:0; padding:0 }` reset here. Tailwind v4's
    preflight (inside @layer base) already does this; an un-layered universal
    reset would out-cascade every layered utility and zero out all spacing. */
@@ -139,7 +253,20 @@ body {
 
 ::selection {
   background: var(--color-amber-400);
-  color: var(--color-ink-950);
+  color: var(--color-on-accent);
+}
+
+/* Modern themes: drop the study's grain + guilloche + lamp-glow; flat themed
+   page with a single very-subtle accent glow at the top. */
+html[data-theme="modern-dark"] body,
+html[data-theme="modern-light"] body {
+  background-image: radial-gradient(
+    1100px 520px at 22% -12%,
+    color-mix(in srgb, var(--color-amber-400) 8%, transparent),
+    transparent 62%
+  );
+  background-color: var(--color-ink-950);
+  background-attachment: fixed;
 }
 
 /* Tabular figures for numeric / monospace contexts. */
@@ -239,6 +366,18 @@ body {
   animation: vr-sheen 0.7s cubic-bezier(0.3, 0.6, 0.3, 1);
 }
 
+/* Modern themes: flat electric-blue surface, no gold gradient, no sheen. */
+html[data-theme="modern-dark"] .vr-foil,
+html[data-theme="modern-light"] .vr-foil {
+  background-image: none;
+  background-color: var(--color-amber-400);
+}
+html[data-theme="modern-dark"] .vr-foil::after,
+html[data-theme="modern-light"] .vr-foil::after {
+  background: transparent;
+  animation: none;
+}
+
 /* Markdown surface tuning inside assistant messages. */
 .markdown-content > :last-child { margin-bottom: 0; }
 .markdown-content h1,
@@ -281,6 +420,23 @@ body {
 .vr-paper ::selection {
   background: var(--paper-accent);
   color: var(--paper-bg);
+}
+
+/* Modern themes: clean card on the themed paper-bg (drop the SVG grain),
+   with a tasteful per-theme border + shadow (lighter on light). */
+html[data-theme="modern-dark"] .vr-paper {
+  background-image: none;
+  background-color: var(--paper-bg);
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -24px rgba(0, 0, 0, 0.7);
+}
+html[data-theme="modern-light"] .vr-paper {
+  background-image: none;
+  background-color: var(--paper-bg);
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 32px -20px rgba(15, 23, 42, 0.18);
 }
 
 /* ============================================================================

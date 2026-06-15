@@ -86,7 +86,7 @@ const SourcePanel: React.FC<SourcePanelProps> = ({ sources, activeIdx, onActiveI
         {!hasRealSources ? (
           <EmptyState />
         ) : activeSource ? (
-          <div className="px-6 py-8 md:px-10">
+          <div className="px-3 py-6 sm:px-6 md:px-10">
             <SourceChunkView source={activeSource} index={safeIdx} total={sources.length} />
           </div>
         ) : null}
@@ -139,7 +139,7 @@ interface SourceChunkViewProps {
 /* The exhibit renders as an ivory paper sheet inside the dark study — long-form
    filing text reads as ink-on-paper. Print palette comes from .vr-paper (CSS). */
 const SourceChunkView: React.FC<SourceChunkViewProps> = ({ source, index, total, compact }) => (
-  <div className={cn('vr-paper vr-rise mx-auto max-w-3xl', compact ? 'px-8 py-7' : 'px-10 py-9 md:px-12')}>
+  <div className={cn('vr-paper vr-rise mx-auto max-w-3xl', compact ? 'px-4 py-6 sm:px-8 sm:py-7' : 'px-4 py-6 sm:px-10 sm:py-9 md:px-12')}>
     {/* Exhibit header — typeset like a filing cover line. */}
     <div className="mb-7 border-b-2 border-double border-[color:var(--paper-line-strong)] pb-5">
       <div className="flex items-baseline justify-between gap-4 font-mono text-[10px] uppercase tracking-[0.22em] text-[color:var(--paper-muted)]">

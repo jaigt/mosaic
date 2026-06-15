@@ -34,6 +34,7 @@ def _make_chunk(index: int) -> DocumentChunk:
         document_type="10-K",
         filing_year=2023,
         filing_quarter="FY",
+        period_of_report="2023-09-30",
         sec_item_section="Item 1",
         chunk_type="text",
         text_content=f"chunk {index}",
@@ -115,6 +116,32 @@ class TestDimValidation:
         table = store.get_table()  # created with the correct schema
         # Re-opening validates and succeeds.
         assert store.get_table().count_rows() == table.count_rows()
+
+
+class TestPeriodOfReportRoundTrip:
+    def test_column_round_trips_to_retrieval(self, temp_db):
+        """A stored chunk's period_of_report survives store → search → chunk."""
+        from backend.retrieval.retriever import _rows_to_retrieved
+
+        store.upsert_chunks([_make_chunk(0)], [_vec()])
+        table = store.get_table()
+        rows = table.search(_vec()).limit(1).to_list()
+
+        retrieved = _rows_to_retrieved(rows)
+        assert len(retrieved) == 1
+        assert retrieved[0].chunk.period_of_report == "2023-09-30"
+
+    def test_missing_period_normalizes_to_none(self, temp_db):
+        """An unset period (stored as "") comes back as None on the chunk."""
+        from backend.retrieval.retriever import _rows_to_retrieved
+
+        chunk = _make_chunk(0)
+        chunk.period_of_report = None
+        store.upsert_chunks([chunk], [_vec()])
+        rows = store.get_table().search(_vec()).limit(1).to_list()
+
+        retrieved = _rows_to_retrieved(rows)
+        assert retrieved[0].chunk.period_of_report is None
 
 
 class TestMaybeCreateIndex:

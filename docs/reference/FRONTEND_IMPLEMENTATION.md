@@ -1,8 +1,10 @@
-# Value Investing RAG: Frontend Implementation Reference
+# Mosaic: Frontend Implementation Reference
 
-> **Last updated:** 2026-06-02. Fully integrated with backend; all API calls live.
-> Now on a Tailwind v4 design system with a reusable `ui/` primitives library.
-> For open frontend work see [`../TODO.md`](../TODO.md).
+> **Last updated:** 2026-06-15 (3-theme system, agent-event UI, insider/smart-money
+> panels, manual-ingest removed, comparison charts, chat persistence).
+> Tailwind v4 + a reusable `ui/` primitives library. For open work see
+> [`../TODO.md`](../TODO.md); for current state see
+> [`../PROJECT_STATUS_AND_ROADMAP.md`](../PROJECT_STATUS_AND_ROADMAP.md).
 
 ## 1. Project Architecture
 
@@ -20,66 +22,90 @@
 ## 2. Component Structure (`frontend/src/components/`)
 
 ### Core Layout
-- **`App.tsx`**: Global state owner. Holds `sources: Source[]` and `activeFiling: FilingInfo | null`. Manages resizable split-pane (2% to 98%); both panel wrappers have `minWidth: 0; overflow: hidden` so panels can shrink freely at any size.
-- **`Sidebar.tsx`**: Navigation + **Ingested Filings List**. Shows status for background ingestion and provides a **Re-ingest/Refresh** button for each document.
+- **`App.tsx`**: Global state owner — `sources`, `activeFiling`, theme, and the
+  derived `activeTicker` (`dominantTicker(sources)`, falling back to the focused
+  filing) that drives the sidebar panels. Resizable split-pane (chat-dominant
+  default); responsive — below the `md` breakpoint the sidebar becomes an overlay
+  drawer and panels stack (`useMediaQuery`). App-root `ErrorBoundary`.
+- **`Sidebar.tsx`**: Brand masthead + **filing ledger** (click a filing to focus
+  chat on it) + the **InsiderPanel** and **SmartMoneyPanel** (keyed to
+  `activeTicker`). *No manual-ingest button* — the agent ingests on demand.
 
 ### UI primitives (`frontend/src/components/ui/`)
-Typed, accessible building blocks used across the app: `Button`, `Input`/`Textarea`,
-`Select`, `Modal` (focus management, Esc/backdrop close), `Badge`, `Card`, `Spinner`,
-plus a `cn` class-merge helper. Smoke-tested with Vitest.
+Typed, accessible building blocks: `Button`, `Input`/`Textarea`, `Select`, `Modal`
+(focus trap, Esc/backdrop close), `Badge`, `Card`, `Spinner`, `cn`. Vitest-tested.
 
-### Chat Interface (Left Panel)
-- **`ChatPanel.tsx`**: SSE streaming logic with an `AbortController` (Stop button
-  cancels an in-flight stream). "Filing Mode" when a document is selected in the
-  sidebar, passing explicit filters (`ticker`, `year`, `doc_type`) to the backend.
-- **`Message.tsx`**: Renders messages via `react-markdown`. Includes a **Generative UI parser** for `<chart>` tags. Renders source badges from retrieved chunks.
-- **`AgentState.tsx`**: Live "thought process" indicator driven by real SSE `status` events.
-- **`IngestModal.tsx`**: Form for new filings. Uses the background task system with polling to prevent UI timeouts.
+### Chat Interface
+- **`ChatPanel.tsx`**: SSE streaming with `AbortController` (Stop button);
+  capability-showcasing empty-state prompts; chat persisted to `localStorage`;
+  hosts the **`ThemeToggle`** (Study / Light / Dark). Passes explicit filters when
+  a filing is focused.
+- **`Message.tsx`**: `react-markdown` (lazy) + the `<chart>` generative-UI parser +
+  a **verification badge** (Verified / N-to-verify / Not-verified) + clickable
+  source pills.
+- **`AgentState.tsx`**: live step timeline driven by SSE `status` **and**
+  `agent_step` events (search / ingest / insider / smart-money), with kind-based
+  styling.
+- **`ThemeToggle.tsx`** (+ `hooks/useTheme.ts`): 3-way theme switch, persisted.
+
+### Sidebar data panels
+- **`InsiderPanel.tsx`**: Form 4 buy/sell sentiment + transactions for the active
+  ticker (`/insiders/{ticker}`).
+- **`SmartMoneyPanel.tsx`**: which curated superinvestors hold the active ticker,
+  position size + Q/Q change (`/smart-money/{ticker}`).
 
 ### Source Viewer (Right Panel)
-- **`SourcePanel.tsx`**: Displays real retrieved SEC chunks as tabs. 
-  - **Visual Identity**: Professional GitHub-style dark theme (`#0d1117`).
-  - **Table Rendering**: Specialized CSS for SEC tables with hover states, numeric right-alignment, and header detection. Preserves empty `<td>` cells for proper layout.
-  - **AI Context**: Blue callout boxes above tables provide LLM-generated summaries.
+- **`SourcePanel.tsx`**: retrieved SEC chunks as "paper exhibit" tabs (themed —
+  Study renders them as ivory sheets; modern themes as clean cards). Specialized
+  SEC-table CSS (see §6).
 
 ### Data Visualization
-- **`Visualizer/FinancialChart.tsx`**: Recharts bar chart for financial metrics. Embedded in `Message.tsx` when the LLM triggers a `<chart>` tag.
+- **`Visualizer/FinancialChart.tsx`** (lazy-loaded): Recharts **bar / line / area**,
+  single- or **multi-series** (comparison charts). `resolveSeries()` infers series
+  from the `<chart>` spec; colors are theme tokens.
 
 ## 3. Generative UI (Charts)
 
 The system supports embedding interactive charts directly in the chat.
 - **Trigger:** The synthesis LLM outputs a JSON block wrapped in `<chart>` tags.
-- **Format:**
+- **Format:** `type` (`bar`|`line`|`area`, default bar) + `data`; single-series uses
+  a `value` key, multi-series uses one key per series plus an optional `series` list:
   ```json
   <chart>
-  {
-    "title": "Revenue Comparison",
-    "data": [
-      {"name": "2022", "value": 117.1},
-      {"name": "2023", "value": 125.4}
-    ]
-  }
+  { "type": "line", "title": "Revenue ($B)",
+    "data": [ {"name": "2023", "AAPL": 383.3, "MSFT": 211.9} ],
+    "series": ["AAPL", "MSFT"] }
   </chart>
   ```
-- **Rendering:** `Message.tsx` parses this tag, extracts the data, and renders the `FinancialChart` component inline.
+- **Rendering:** `Message.tsx` parses the tag; `FinancialChart` resolves the series
+  (back-compatible with the legacy `{name, value}` shape) and renders inline.
 
-## 4. Background Ingestion Flow
+## 4. Ingestion — fully agentic (no manual UI)
 
-To handle long SEC processing times, ingestion is asynchronous:
-1. **Trigger:** User clicks "Ingest" or "Refresh". Frontend calls `POST /api/ingest`.
-2. **Response:** Backend returns `task_id` immediately.
-3. **Polling:** Frontend `IngestModal` or `Sidebar` polls `GET /api/ingest/status/{task_id}` every 2.5s.
-4. **Completion:** When status is `completed`, the UI updates the chunk count and refreshes the filings list.
+There is **no ingest button/modal**. When you ask about a company the corpus
+doesn't have, the **agent auto-ingests** its filing from EDGAR mid-answer
+(surfaced as `agent_step` events in the chat timeline) and re-searches. The
+filing ledger fills as the agent fetches. (`POST /api/ingest` still exists as a
+programmatic path but nothing in the UI calls it.)
 
-## 5. Visual Identity — "The Analyst's Study" tokens (`@theme` in `src/index.css`)
+## 5. Visual Identity — 3 themes (`@theme` + `html[data-theme]` in `src/index.css`)
 
-An engraved-ledger aesthetic: deep racing-green ink surfaces, ivory type,
-brass-gold "foil" accents, and a signature paper-document treatment for
-retrieved sources. Design tokens are defined once in the `@theme` block and
-consumed as Tailwind utilities (e.g. `bg-ink-900`, `text-fg-100`,
-`border-line`, `text-amber-400`). **Token *names* are semantic and stable** —
-`amber-*` is "the accent", `ink-*` is "the surface scale" — so retheming means
-changing values in `index.css` only.
+Tokens are semantic and stable (`amber-*` = "the accent", `ink-*` = "the surface
+scale", `fg-*`/`paper-*` = text), consumed as Tailwind utilities. **Three themes
+share the same component code** — the `@theme` block holds the default **Study**
+values, and `html[data-theme="modern-dark"|"modern-light"]` blocks redefine the
+same variables (see `VISUAL_AUDIT.md`):
+
+- **Study** (default) — engraved-ledger: racing-green ink, brass-gold foil accent,
+  serif display, grain/guilloche/lamp-glow atmosphere, ivory "paper" source sheets.
+- **Modern-Dark** — sleek neutral near-black, electric-blue accent, grotesk type, flat.
+- **Modern-Light** — clean white/soft-gray, electric-blue accent, grotesk type.
+
+The toggle (`ThemeToggle`) persists to `localStorage['vr.theme']` with a no-flash
+inline init in `index.html`. Per-theme overrides neutralize the Study-only
+atmosphere (`body`, `.vr-foil`, `.vr-paper`) and swap fonts; `--color-on-accent`
+keeps primary-button text readable on each accent. The table below describes the
+**Study** token values:
 
 | Token family | Examples | Use |
 |---|---|---|

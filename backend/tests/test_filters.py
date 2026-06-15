@@ -5,6 +5,7 @@ from backend.retrieval.filters import (
     build_where_clause,
     sql_quote,
     validate_doc_type,
+    validate_iso_date,
     validate_quarter,
     validate_ticker,
 )
@@ -72,3 +73,42 @@ class TestBuildWhereClause:
     def test_injection_in_ticker_raises(self):
         with pytest.raises(ValueError):
             build_where_clause(ticker="A' OR '1'='1")
+
+    def test_period_of_report_exact(self):
+        assert (
+            build_where_clause(period_of_report="2023-09-30")
+            == "period_of_report = '2023-09-30'"
+        )
+
+    def test_period_range(self):
+        assert build_where_clause(period_start="2023-01-01", period_end="2023-12-31") == (
+            "period_of_report >= '2023-01-01' AND period_of_report <= '2023-12-31'"
+        )
+
+    def test_period_combines_with_ticker(self):
+        clause = build_where_clause(ticker="AAPL", period_start="2023-01-01")
+        assert clause == "ticker = 'AAPL' AND period_of_report >= '2023-01-01'"
+
+    def test_injection_in_period_raises(self):
+        with pytest.raises(ValueError):
+            build_where_clause(period_of_report="2023-09-30' OR '1'='1")
+
+
+class TestValidateIsoDate:
+    def test_accepts_valid(self):
+        assert validate_iso_date("2023-09-30") == "2023-09-30"
+
+    def test_strips_whitespace(self):
+        assert validate_iso_date("  2023-09-30 ") == "2023-09-30"
+
+    def test_rejects_non_date(self):
+        with pytest.raises(ValueError):
+            validate_iso_date("not-a-date")
+
+    def test_rejects_impossible_date(self):
+        with pytest.raises(ValueError):
+            validate_iso_date("2023-13-40")
+
+    def test_rejects_injection(self):
+        with pytest.raises(ValueError):
+            validate_iso_date("2023-09-30'; DROP TABLE")

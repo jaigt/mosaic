@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Upload, Trash2, X, FileText, Square } from 'lucide-react';
+import { Send, Trash2, X, FileText, Square, Menu } from 'lucide-react';
 import Message from './Message';
-import AgentState, { AgentStep } from './AgentState';
-import { streamChat, Source, FilingInfo } from '../api';
+import AgentState, { AgentStep, AgentStepKind } from './AgentState';
+import { streamChat, Source, FilingInfo, VerificationResult } from '../api';
 import { Button, Badge, Textarea, Card } from './ui';
+import ThemeToggle from './ThemeToggle';
 
 interface ChatMessage {
   id: string;
@@ -11,26 +12,81 @@ interface ChatMessage {
   content: string;
   sources?: Source[];
   isStreaming?: boolean;
+  verification?: VerificationResult;
 }
 
-// Order slips — clickable starters shown on the empty desk.
-const SUGGESTED_PROMPTS = [
-  'Summarize the key risk factors',
-  'What drove revenue growth this period?',
-  'Chart revenue over the last three years',
+// Persist the conversation across reloads. Bounded + defensive: a corrupt or
+// foreign payload must never crash the panel.
+const CHAT_STORAGE_KEY = 'vr.chat.v1';
+const MAX_PERSISTED = 50;
+
+export function loadMessages(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (m): m is ChatMessage =>
+          m && typeof m.id === 'string' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string',
+      )
+      // Never restore a stream as "in progress" — there's no controller behind it.
+      .map((m) => ({ ...m, isStreaming: false }))
+      .slice(-MAX_PERSISTED);
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(messages: ChatMessage[]): void {
+  try {
+    const trimmed = messages
+      .slice(-MAX_PERSISTED)
+      .map((m) => ({ ...m, isStreaming: false }));
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // Quota or unavailable storage — drop persistence silently.
+  }
+}
+
+function clearStoredMessages(): void {
+  try {
+    localStorage.removeItem(CHAT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// Clickable starters on the empty desk. The general set deliberately showcases
+// the agent's powers users won't otherwise discover (auto-fetch a company not in
+// the corpus, compare across names, smart-money/insider lookups). The
+// filing-scoped set shows when a specific filing is in focus.
+const AGENT_PROMPTS = [
+  { tag: 'Auto-fetch', text: 'How did Microsoft do last quarter?' },
+  { tag: 'Compare', text: 'Compare AAPL, MSFT and GOOGL revenue' },
+  { tag: 'Smart money', text: 'Which superinvestors own NVDA?' },
+  { tag: 'Insiders', text: 'Any insider buying or selling at TSLA?' },
+];
+const FILING_PROMPTS = [
+  { tag: 'Risks', text: 'Summarize the key risk factors' },
+  { tag: 'Drivers', text: 'What drove revenue growth this period?' },
+  { tag: 'Trend', text: 'Chart revenue over the last three years' },
 ];
 
 interface ChatPanelProps {
   onSourcesUpdate: (sources: Source[]) => void;
   onCitationClick: (sources: Source[], index: number) => void;
-  onIngestClick: () => void;
   onClear: () => void;
   activeFiling: FilingInfo | null;
   onClearFiling: () => void;
+  /** On mobile, show a hamburger that opens the sidebar drawer. */
+  showMenuButton?: boolean;
+  onMenuClick?: () => void;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick, onIngestClick, onClear, activeFiling, onClearFiling }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick, onClear, activeFiling, onClearFiling, showMenuButton, onMenuClick }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadMessages());
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
@@ -76,6 +132,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
     };
   }, []);
 
+  // Persist the conversation so a refresh doesn't wipe it.
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages]);
+
   const handleStop = () => {
     abortRef.current?.abort();
   };
@@ -84,6 +145,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
     abortRef.current?.abort();
     setMessages([]);
     setAgentSteps([]);
+    clearStoredMessages();
     onClear();
   };
 
@@ -119,8 +181,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
         if (event.type === 'status') {
           setAgentSteps(prev => [
             ...prev.map(s => s.status === 'running' ? { ...s, status: 'completed' as const } : s),
-            { id: String(Date.now()), label: event.data, status: 'running' as const },
+            { id: crypto.randomUUID(), label: event.data, status: 'running' as const, kind: 'status' },
           ]);
+        } else if (event.type === 'agent_step') {
+          // Autonomous agent actions. `ingest` reads as in-progress until the
+          // following `retry_search`/`ingest_failed` step resolves it; an
+          // `ingest_failed` lands as a completed (warning) step.
+          const kind = event.data.kind as AgentStepKind;
+          const completesIngest = kind === 'retry_search' || kind === 'ingest_failed';
+          const stepStatus = kind === 'ingest' ? ('running' as const) : ('completed' as const);
+          setAgentSteps(prev => [
+            ...prev.map(s =>
+              s.status === 'running' && (completesIngest || s.kind !== 'ingest')
+                ? { ...s, status: 'completed' as const }
+                : s,
+            ),
+            { id: crypto.randomUUID(), label: event.data.label, status: stepStatus, kind },
+          ]);
+        } else if (event.type === 'verification') {
+          const verSnap = event.data;
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, verification: verSnap } : m
+          ));
         } else if (event.type === 'chunk') {
           accumulated += event.data;
           const snap = accumulated;
@@ -176,20 +258,30 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
 
   return (
     <Card elevated className="flex flex-1 flex-col bg-ink-900/70">
-      <header className="vr-rule-b flex min-h-[62px] min-w-0 items-center justify-between gap-2 px-6 py-3.5">
+      <header className="vr-rule-b flex min-h-[62px] min-w-0 items-center justify-between gap-2 px-4 py-3.5 md:px-6">
         <div className="flex min-w-0 items-baseline gap-3 overflow-hidden">
+          {showMenuButton && (
+            <button
+              type="button"
+              onClick={onMenuClick}
+              aria-label="Open menu"
+              className="-ml-1 grid h-9 w-9 shrink-0 place-items-center self-center rounded-md text-fg-300 transition-colors hover:bg-white/5 hover:text-fg-100"
+            >
+              <Menu size={18} />
+            </button>
+          )}
           <h2 className="shrink-0 font-display text-[17px] leading-tight tracking-[0.01em] text-paper-100">
             The Analyst's Desk
           </h2>
           {activeFiling ? (
-            <Badge tone="amber" mono className="max-w-full">
-              <FileText size={10} aria-hidden="true" />
-              <span className="truncate">{activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}</span>
+            <Badge tone="amber" mono className="min-w-0 max-w-[42vw] sm:max-w-[220px]">
+              <FileText size={10} className="shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{activeFiling.ticker} {activeFiling.filing_year} {activeFiling.document_type}</span>
               <button
                 type="button"
                 onClick={onClearFiling}
                 aria-label="Clear filing focus"
-                className="ml-0.5 grid place-items-center rounded-sm hover:text-amber-200"
+                className="ml-0.5 grid shrink-0 place-items-center rounded-sm hover:text-amber-200"
               >
                 <X size={11} />
               </button>
@@ -201,9 +293,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onIngestClick}>
-            <Upload size={13} /> Ingest
-          </Button>
           {isStreaming && (
             <Button variant="danger" size="sm" onClick={handleStop} title="Stop generating">
               <Square size={12} /> Stop
@@ -214,12 +303,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
               <Trash2 size={13} /> Clear
             </Button>
           )}
+          <ThemeToggle />
         </div>
       </header>
 
-      <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
+      <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-6">
         {messages.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center px-10 py-8 text-center">
+          <div className="flex min-h-full flex-1 flex-col items-center justify-center px-6 py-8 text-center sm:px-10">
             <div className="vr-rise font-mono text-[10px] uppercase tracking-[0.32em] text-amber-400/90" style={{ animationDelay: '60ms' }}>
               {activeFiling
                 ? `${activeFiling.ticker} · ${activeFiling.filing_year} ${activeFiling.document_type}`
@@ -233,22 +323,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             <p className="vr-rise mt-4 max-w-sm font-serif text-[14.5px] leading-relaxed text-fg-300" style={{ animationDelay: '220ms' }}>
               {activeFiling
                 ? 'Queries are focused on this document. Ask about margins, risk factors, or guidance — every answer cites the page it came from.'
-                : 'Pick a filing from the ledger or ingest a new one, then ask. Every answer cites the exact excerpt it came from.'}
+                : "Ask about any company — I'll pull its SEC filings myself, then answer with cited figures. Compare names, check insider trades, or see which superinvestors own it."}
             </p>
 
             <div className="vr-rise mt-8 flex w-full max-w-md flex-col gap-2" style={{ animationDelay: '300ms' }}>
-              {SUGGESTED_PROMPTS.map((prompt, i) => (
+              {(activeFiling ? FILING_PROMPTS : AGENT_PROMPTS).map((prompt) => (
                 <button
-                  key={prompt}
+                  key={prompt.text}
                   type="button"
-                  onClick={() => setInput(prompt)}
+                  onClick={() => setInput(prompt.text)}
                   className="group flex items-center gap-3 rounded-md border border-line bg-ink-850/60 px-4 py-2.5 text-left transition-all hover:border-amber-500/40 hover:bg-amber-400/[0.05]"
                 >
-                  <span className="font-mono text-[10px] tabular-nums text-fg-400 transition-colors group-hover:text-amber-400">
-                    {String(i + 1).padStart(2, '0')}
+                  <span className="w-[72px] shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-fg-400 transition-colors group-hover:text-amber-400">
+                    {prompt.tag}
                   </span>
                   <span className="flex-1 text-[13px] text-fg-200 transition-colors group-hover:text-fg-100">
-                    {prompt}
+                    {prompt.text}
                   </span>
                   <span className="font-mono text-[11px] text-fg-400 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true">
                     ↵
@@ -265,6 +355,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             content={msg.content}
             sources={msg.sources}
             isStreaming={msg.isStreaming}
+            verification={msg.verification}
             onCitationClick={onCitationClick}
           />
         ))}
@@ -278,15 +369,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeFiling ? `Ask the ${activeFiling.ticker} ${activeFiling.filing_year} filing…` : 'Ask the filings — margins, risks, guidance…'}
+            placeholder={activeFiling ? `Ask the ${activeFiling.ticker} ${activeFiling.filing_year} filing…` : 'Ask about any company — “How is NVDA doing?” · “Compare AAPL vs MSFT” · “Who owns META?”'}
             disabled={isStreaming}
             rows={3}
             className="min-h-[84px] max-h-[200px] pr-32 font-serif text-[14.5px] leading-relaxed placeholder:italic"
           />
           <div className="absolute bottom-3 right-3 flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={onIngestClick} title="Ingest a filing" aria-label="Ingest a filing">
-              <Upload size={17} />
-            </Button>
             <Button variant="primary" size="md" onClick={handleSend} disabled={!input.trim() || isStreaming}>
               <Send size={14} /> Ask
             </Button>

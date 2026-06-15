@@ -22,7 +22,35 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, eyebrow, children, 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      // Focus trap: keep Tab / Shift+Tab cycling within the dialog panel.
+      if (e.key === 'Tab') {
+        const panel = panelRef.current;
+        if (!panel) return;
+        const focusable = panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) {
+          e.preventDefault();
+          panel.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey) {
+          if (active === first || active === panel) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;

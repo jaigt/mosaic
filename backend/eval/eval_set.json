@@ -1,0 +1,146 @@
+{
+  "_comment": "Seed retrieval eval set for a value-investing analyst. Each case: a natural query + the filing/section a good retriever should surface in its top-k. 'section_contains' is a single case-insensitive substring shorthand; 'section_any_of' is a list and matches if the chunk's sec_item_section contains ANY entry (case-insensitive). Financial cases list narrative sections (MD&A, Management) alongside the primary statement because the answer legitimately lives in either. Ingest the referenced filings before running. Run: ./.venv/bin/python -m backend.eval.harness",
+  "cases": [
+    {
+      "query": "What was Apple's total net revenue for the most recent fiscal year?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Income Statement", "Operations", "MD&A", "Management"]
+    },
+    {
+      "query": "How much cash did Apple generate from operating activities?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Cash Flow", "Liquidity", "MD&A", "Management"]
+    },
+    {
+      "query": "What are Apple's total assets and total liabilities?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Balance Sheet", "Financial Position", "MD&A"]
+    },
+    {
+      "query": "What are the main risk factors Apple discloses?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_contains": "Risk"
+    },
+    {
+      "query": "What does management say about gross margin trends and drivers?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["MD&A", "Management", "Operations"]
+    },
+    {
+      "query": "Describe Apple's business and primary product segments.",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Business", "Item 1"]
+    },
+    {
+      "query": "What was Apple's research and development expense?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Income Statement", "Operations", "MD&A", "Management"]
+    },
+    {
+      "query": "What are Apple's contractual obligations and commitments?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Contractual Obligations", "Liquidity", "MD&A", "Commitments"]
+    },
+    {
+      "query": "How much did Apple return to shareholders via dividends and buybacks?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_any_of": ["Cash Flow", "Liquidity", "Equity", "MD&A", "Management"]
+    },
+    {
+      "query": "What is Microsoft's total revenue and how is it split by segment?",
+      "ticker": "MSFT",
+      "doc_type": "10-K",
+      "section_any_of": ["Income Statement", "Operations", "Segment", "MD&A", "Management"]
+    },
+    {
+      "query": "What does Microsoft management say about Intelligent Cloud and Azure growth?",
+      "ticker": "MSFT",
+      "doc_type": "10-K",
+      "section_any_of": ["MD&A", "Management", "Segment", "Operations"]
+    },
+    {
+      "query": "What are Microsoft's key risk factors related to competition and AI?",
+      "ticker": "MSFT",
+      "doc_type": "10-K",
+      "section_contains": "Risk"
+    },
+    {
+      "query": "What was Microsoft's operating income and operating margin?",
+      "ticker": "MSFT",
+      "doc_type": "10-K",
+      "section_any_of": ["Income Statement", "Operations", "MD&A", "Management"]
+    },
+    {
+      "query": "How much cash and short-term investments does Microsoft hold?",
+      "ticker": "MSFT",
+      "doc_type": "10-K",
+      "section_any_of": ["Balance Sheet", "Liquidity", "Financial Position", "MD&A"]
+    },
+    {
+      "query": "What was NVIDIA's data center revenue and total revenue growth?",
+      "ticker": "NVDA",
+      "doc_type": "10-K",
+      "section_any_of": ["Income Statement", "Operations", "Segment", "MD&A", "Management"]
+    },
+    {
+      "query": "What does NVIDIA disclose about gross margin and supply constraints?",
+      "ticker": "NVDA",
+      "doc_type": "10-K",
+      "section_any_of": ["MD&A", "Management", "Operations"]
+    },
+    {
+      "query": "What are NVIDIA's risk factors around export controls and customer concentration?",
+      "ticker": "NVDA",
+      "doc_type": "10-K",
+      "section_contains": "Risk"
+    },
+    {
+      "query": "Describe NVIDIA's business segments and primary markets.",
+      "ticker": "NVDA",
+      "doc_type": "10-K",
+      "section_any_of": ["Business", "Item 1", "Segment"]
+    },
+    {
+      "query": "What was NVIDIA's free cash flow and capital expenditure?",
+      "ticker": "NVDA",
+      "doc_type": "10-K",
+      "section_any_of": ["Cash Flow", "Liquidity", "MD&A", "Management"]
+    },
+    {
+      "query": "What were Apple's net sales in the most recent quarter?",
+      "ticker": "AAPL",
+      "doc_type": "10-Q",
+      "section_any_of": ["Income Statement", "Operations", "MD&A", "Management"]
+    },
+    {
+      "query": "What does Microsoft's latest quarterly filing say about deferred revenue?",
+      "ticker": "MSFT",
+      "doc_type": "10-Q",
+      "section_any_of": ["Balance Sheet", "MD&A", "Management", "Notes"]
+    },
+    {
+      "query": "How has Apple's gross margin trended over the past three fiscal years?",
+      "ticker": "AAPL",
+      "section_any_of": ["MD&A", "Management", "Income Statement", "Operations"]
+    },
+    {
+      "query": "Compare NVIDIA's revenue growth trend across recent fiscal years.",
+      "ticker": "NVDA",
+      "section_any_of": ["MD&A", "Management", "Income Statement", "Operations", "Segment"]
+    },
+    {
+      "query": "What is Microsoft's long-term debt and interest expense over recent years?",
+      "ticker": "MSFT",
+      "section_any_of": ["Balance Sheet", "MD&A", "Liquidity", "Notes", "Management"]
+    }
+  ]
+}

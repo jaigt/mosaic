@@ -9,6 +9,10 @@ class DocumentChunk(BaseModel):
     document_type: Literal["10-K", "10-Q", "8-K"]
     filing_year: int
     filing_quarter: Literal["Q1", "Q2", "Q3", "Q4", "FY"]
+    period_of_report: Optional[str] = Field(
+        default=None,
+        description="Raw period-end date (ISO YYYY-MM-DD). Optional/nullable for older rows.",
+    )
     sec_item_section: str = Field(..., description="e.g., 'Item 7: MD&A'")
     chunk_type: Literal["text", "table", "chart"]
     text_content: str = Field(..., description="Text or LLM-generated table summary to be embedded")

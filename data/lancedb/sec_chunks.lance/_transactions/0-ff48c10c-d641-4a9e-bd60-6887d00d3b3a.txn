@@ -1,5 +1,0 @@
-$ff48c10c-d641-4a9e-bd60-6887d00d3b3a²Š!chunk_id ÿÿÿÿÿÿÿÿÿ*string08!ticker ÿÿÿÿÿÿÿÿÿ*string08cik ÿÿÿÿÿÿÿÿÿ*string08(document_type ÿÿÿÿÿÿÿÿÿ*string08%filing_year ÿÿÿÿÿÿÿÿÿ*int3208)filing_quarter ÿÿÿÿÿÿÿÿÿ*string08+sec_item_section ÿÿÿÿÿÿÿÿÿ*string08%
-chunk_type ÿÿÿÿÿÿÿÿÿ*string08'text_content ÿÿÿÿÿÿÿÿÿ*string08&raw_payload	 ÿÿÿÿÿÿÿÿÿ*string085vector
- ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:307208"!
-lance.auto_cleanup.interval20"'
-lance.auto_cleanup.older_than14days

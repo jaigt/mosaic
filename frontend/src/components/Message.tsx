@@ -1,10 +1,22 @@
-import React, { useMemo } from 'react';
-import { ExternalLink } from 'lucide-react';
-import ReactMarkdown, { Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import FinancialChart from './Visualizer/FinancialChart';
-import { Source } from '../api';
-import { Badge, cn } from './ui';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
+import { ExternalLink, ShieldCheck, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Source, VerificationResult } from '../api';
+import { Badge, Spinner, cn } from './ui';
+import type { ChartRow, ChartSpec } from './Visualizer/FinancialChart';
+
+// Heavy renderers are split into async chunks: recharts (FinancialChart) and
+// react-markdown (MarkdownContent) only load when an assistant message that
+// needs them is shown, keeping the initial bundle small.
+const FinancialChart = lazy(() => import('./Visualizer/FinancialChart'));
+const MarkdownContent = lazy(() => import('./MarkdownContent'));
+
+// Small in-theme fallback while a lazy renderer's chunk is fetched.
+const LazyFallback: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex items-center gap-2 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-fg-400">
+    <Spinner size={12} label={label} />
+    {label}
+  </div>
+);
 
 interface Citation {
   id: string;
@@ -14,69 +26,102 @@ interface Citation {
 interface MessageProps {
   role: 'user' | 'assistant';
   content: string;
-  chartData?: { name: string; value: number }[];
+  chartData?: ChartRow[];
   citations?: Citation[];
   sources?: Source[];
   isStreaming?: boolean;
+  /** Critic-pass result auditing the answer against its sources. Only rendered
+   *  on finished (non-streaming) assistant messages. */
+  verification?: VerificationResult;
   /** Clicking a source pill focuses that source in the SourcePanel.
    *  Kept as a (sources, index) signature so the same stable handler can be
    *  shared across messages without breaking React.memo. */
   onCitationClick?: (sources: Source[], index: number) => void;
 }
 
-// Hoisted to module scope: this object captures nothing dynamic, so re-creating
-// it on every render needlessly forces react-markdown to re-render its subtree.
-// Styling is class-based so it inherits the shared token palette.
-// react-markdown passes a `node` prop that React doesn't recognize on DOM
-// elements; strip it before spreading the rest onto the host element.
-const omitNode = <T extends { node?: unknown }>(props: T) => {
-  const rest = { ...props };
-  delete rest.node;
-  return rest;
-};
+// Trust signal shown under a finished answer once the critic pass returns.
+const VerificationBadge: React.FC<{ verification: VerificationResult }> = ({ verification }) => {
+  const [expanded, setExpanded] = useState(false);
 
-const markdownComponents: Components = {
-  a: (props) => (
-    <a {...omitNode(props)} className="text-amber-300 underline-offset-2 hover:underline" target="_blank" rel="noreferrer" />
-  ),
-  p: (props) => <p {...omitNode(props)} className="mb-3 last:mb-0" />,
-  ul: (props) => <ul {...omitNode(props)} className="mb-3 list-disc pl-5 marker:text-fg-400" />,
-  ol: (props) => <ol {...omitNode(props)} className="mb-3 list-decimal pl-5 marker:text-fg-400" />,
-  li: (props) => <li {...omitNode(props)} className="mb-1" />,
-  code: (props) => (
-    <code {...omitNode(props)} className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[0.88em] text-amber-200" />
-  ),
-  table: (props) => (
-    <div className="mb-4 overflow-x-auto rounded-md border border-line">
-      <table {...omitNode(props)} className="w-full border-collapse font-mono text-[13px] tabular-nums" />
+  if (verification.status === 'supported') {
+    return (
+      <div className="mt-3">
+        <Badge tone="ledger" pill title="Every figure was re-checked against the cited filings.">
+          <ShieldCheck size={11} aria-hidden="true" />
+          Verified against sources
+        </Badge>
+      </div>
+    );
+  }
+
+  if (verification.status === 'caveats') {
+    const count = verification.issues.length;
+    const hasIssues = count > 0;
+    return (
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={hasIssues ? () => setExpanded((v) => !v) : undefined}
+          aria-expanded={hasIssues ? expanded : undefined}
+          className={cn(
+            'rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60',
+            hasIssues ? 'cursor-pointer transition-transform hover:scale-[1.04]' : 'cursor-default',
+          )}
+        >
+          <Badge tone="amber" pill title="We re-checked the answer against the cited filings and flagged points worth a second look.">
+            <AlertTriangle size={11} aria-hidden="true" />
+            {count} point{count === 1 ? '' : 's'} to verify
+            {hasIssues &&
+              (expanded ? (
+                <ChevronDown size={11} aria-hidden="true" />
+              ) : (
+                <ChevronRight size={11} aria-hidden="true" />
+              ))}
+          </Badge>
+        </button>
+        {hasIssues && expanded && (
+          <ul className="mt-2 list-disc rounded-md border border-amber-400/25 bg-amber-400/[0.06] py-2 pl-7 pr-3 text-[12.5px] leading-relaxed text-amber-200/90 marker:text-amber-400/70">
+            {verification.issues.map((issue, i) => (
+              <li key={i} className="mb-1 last:mb-0">
+                {issue}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // unknown — keep it muted and unobtrusive.
+  return (
+    <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-fg-400/70">
+      Not verified
     </div>
-  ),
-  th: (props) => (
-    <th {...omitNode(props)} className="border-b border-line bg-white/[0.03] px-3 py-2 text-left font-semibold text-fg-300" />
-  ),
-  td: (props) => (
-    <td {...omitNode(props)} className="border-b border-line-soft px-3 py-2" />
-  ),
+  );
 };
 
-const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, onCitationClick }) => {
+const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, verification, onCitationClick }) => {
   const isUser = role === 'user';
 
   // Extract chart data from content if it contains <chart> tags.
   // Memoized on `content` so the (potentially expensive) regex + JSON.parse
   // only runs when the text actually changes.
-  const { cleanContent, inlineChartData, inlineChartTitle } = useMemo(() => {
+  const { cleanContent, inlineChartData, inlineChartTitle, inlineChartType, inlineChartSeries } = useMemo(() => {
     let cleanContent = content;
-    let inlineChartData = chartData;
+    let inlineChartData: ChartRow[] | undefined = chartData;
     let inlineChartTitle = 'Analysis';
+    let inlineChartType: string | undefined;
+    let inlineChartSeries: string[] | undefined;
 
     if (!isUser && content.includes('<chart>')) {
       try {
         const chartMatch = content.match(/<chart>([\s\S]*?)<\/chart>/);
         if (chartMatch) {
-          const parsed = JSON.parse(chartMatch[1]);
+          const parsed = JSON.parse(chartMatch[1]) as ChartSpec;
           inlineChartData = parsed.data;
           if (parsed.title) inlineChartTitle = parsed.title;
+          if (parsed.type) inlineChartType = parsed.type;
+          if (parsed.series) inlineChartSeries = parsed.series;
           cleanContent = content.replace(/<chart>[\s\S]*?<\/chart>/, '').trim();
         }
       } catch (e) {
@@ -84,7 +129,7 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
       }
     }
 
-    return { cleanContent, inlineChartData, inlineChartTitle };
+    return { cleanContent, inlineChartData, inlineChartTitle, inlineChartType, inlineChartSeries };
   }, [content, chartData, isUser]);
 
   return (
@@ -126,9 +171,9 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
         >
           {cleanContent ? (
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {cleanContent}
-              </ReactMarkdown>
+              <Suspense fallback={<LazyFallback label="Rendering" />}>
+                <MarkdownContent>{cleanContent}</MarkdownContent>
+              </Suspense>
             </div>
           ) : (
             isStreaming ? '' : <span className="italic text-fg-400">No response</span>
@@ -143,7 +188,14 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
 
         {inlineChartData && inlineChartData.length > 0 && (
           <div className="mt-4">
-            <FinancialChart title={inlineChartTitle} data={inlineChartData} />
+            <Suspense fallback={<LazyFallback label="Loading chart" />}>
+              <FinancialChart
+                title={inlineChartTitle}
+                data={inlineChartData}
+                type={inlineChartType}
+                series={inlineChartSeries}
+              />
+            </Suspense>
           </div>
         )}
 
@@ -168,6 +220,10 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
               </button>
             ))}
           </div>
+        )}
+
+        {!isUser && !isStreaming && verification && (
+          <VerificationBadge verification={verification} />
         )}
       </div>
     </div>
