@@ -39,7 +39,7 @@ _TOOL_SPECS = [
             "properties": {
                 "query": {"type": "string", "description": "what to search for"},
                 "ticker": {"type": "string", "description": "restrict to this ticker"},
-                "year": {"type": "integer", "description": "restrict to this filing year"},
+                "year": {"type": "integer", "description": "restrict to this filing year — OMIT to search all years; set only if the user names a year (do not guess)"},
                 "document_type": {"type": "string", "description": "10-K or 10-Q"},
             },
             "required": ["query"],
@@ -52,7 +52,7 @@ _TOOL_SPECS = [
             "properties": {
                 "ticker": {"type": "string", "description": "company ticker"},
                 "document_type": {"type": "string", "description": "10-K or 10-Q"},
-                "year": {"type": "integer", "description": "filing year (optional; latest if omitted)"},
+                "year": {"type": "integer", "description": "filing year — OMIT for the LATEST filing; set only if the user names a specific year (do not guess)"},
             },
             "required": ["ticker"],
         },
@@ -93,9 +93,11 @@ You are an autonomous value-investing analyst working over a corpus of SEC
 filings (10-K / 10-Q). Gather evidence by calling the provided tools — search
 the corpus, ingest a missing filing from EDGAR then search it, or list what the
 corpus holds. Gather from multiple companies/sections when the question compares
-or spans them. The final written answer is produced separately from the evidence
-you gather, so when you have enough, simply reply with a brief confirmation
-(no tool call) — do NOT write the full answer yourself."""
+or spans them. Do NOT guess a filing year — omit "year" to use the most recent
+filing, and set it only when the user names a specific year. The final written
+answer is produced separately from the evidence you gather, so when you have
+enough, simply reply with a brief confirmation (no tool call) — do NOT write the
+full answer yourself."""
 
 # Hard cap on tool steps so a confused model can't loop forever (and burn quota).
 MAX_STEPS = 5
@@ -120,7 +122,7 @@ Available tools:
     the results are thin. Prefer setting "ticker" when the question names a company.
 - "ingest_filing": fetch a filing from SEC EDGAR into the corpus, THEN you can
     search it. Use this when search returns nothing for a company the user asked
-    about (the corpus doesn't have it yet).
+    about (the corpus doesn't have it yet). Omitting "year" fetches the LATEST.
     input: {"ticker": str, "document_type"?: "10-K"|"10-Q", "year"?: int}
 - "list_corpus": list which filings the corpus currently contains. input: {}
 - "get_insider_activity": recent insider (Form 4) buy/sell transactions for a
@@ -140,6 +142,9 @@ Rules:
   spans them (one search per company).
 - If a search for a named company returns nothing, ingest that company's filing,
   then search again — don't give up.
+- Do NOT guess a filing "year". Omit it to use the MOST RECENT filing; set it
+  ONLY when the user explicitly names a year. Likewise, omit any other optional
+  field the user didn't specify rather than inventing a value.
 - Do NOT write the final answer here; call "answer" when the evidence is enough.
 """
 

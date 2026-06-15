@@ -1,7 +1,7 @@
 """
-Two-pass table strategy: sends raw SEC tables to the fast LLM (Gemini Flash)
-to generate semantic summaries suitable for embedding.
-POC Decision: Using gemini-2.0-flash on AI Studio free tier.
+Two-pass table strategy: sends raw SEC tables to the configured fast model
+(``settings.fast_model`` — provider-agnostic via the LLM router) to generate
+semantic summaries suitable for embedding.
 """
 import logging
 from tenacity import (
@@ -40,7 +40,7 @@ def summarize_table(
     document_type: str,
 ) -> str:
     """
-    Send a raw table to Gemini Flash and return a semantic summary.
+    Send a raw table to the fast model and return a semantic summary.
     Retries up to 3 times on failure with exponential backoff.
     """
     if not table_content.strip():

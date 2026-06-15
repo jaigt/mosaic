@@ -56,6 +56,17 @@ def test_prompts_are_strings():
     assert "USER QUESTION" in p and "STEPS SO FAR" in p
 
 
+def test_prompts_steer_away_from_guessing_year():
+    """Both the text and native prompts must tell the model NOT to guess a filing
+    year (regression guard: a guessed year fetches the wrong/old filing)."""
+    from backend.agent.react import _NATIVE_SYSTEM_PROMPT
+
+    for prompt in (build_system_prompt(), _NATIVE_SYSTEM_PROMPT):
+        low = prompt.lower()
+        assert "year" in low
+        assert "do not guess" in low or "don't guess" in low
+
+
 # ── ReactAgent.run (injected fakes) ───────────────────────────────────────────
 
 def _rc(chunk_id, ticker="AAPL", section="Item 7: MD&A"):
