@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { FileText, Plus, RefreshCw, X } from 'lucide-react';
 import { listFilings, FilingInfo, ingestFiling, getIngestStatus } from '../api';
 import { Button, Spinner, cn } from './ui';
+import InsiderPanel from './InsiderPanel';
 
 interface SidebarProps {
   onIngestClick: () => void;
@@ -204,6 +205,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           </ul>
         )}
       </nav>
+
+      {/* Insider activity for the focused filing's issuer; hidden otherwise. */}
+      {activeFiling ? (
+        <div className="vr-rule-t shrink-0">
+          <InsiderPanel ticker={activeFiling.ticker} />
+        </div>
+      ) : (
+        <div className="vr-rule-t shrink-0 px-5 py-3 font-serif text-[12px] italic leading-relaxed text-fg-400">
+          Select a filing to see its insider activity.
+        </div>
+      )}
 
       {/* Ledger footer: a closing line, like the foot of a statement. */}
       <div className="vr-rule-t px-6 py-4">

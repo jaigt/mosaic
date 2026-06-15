@@ -120,3 +120,60 @@ export async function listFilings(): Promise<{ filings: FilingInfo[] }> {
   if (!resp.ok) throw new Error('Failed to list filings');
   return resp.json();
 }
+
+export interface InsiderTxn {
+  insider: string;
+  position: string;
+  date: string; // YYYY-MM-DD
+  txn_type: 'buy' | 'sell' | 'other';
+  code: string;
+  description: string;
+  shares: number;
+  price: number | null;
+  value: number | null;
+}
+
+export interface InsiderActivity {
+  ticker: string;
+  transactions: InsiderTxn[];
+  buys: number;
+  sells: number;
+  bought_shares: number;
+  sold_shares: number;
+  net_shares: number;
+}
+
+/** Form 4 insider transactions + buy/sell sentiment for a single issuer. */
+export async function getInsiderActivity(ticker: string, limit = 12): Promise<InsiderActivity> {
+  const resp = await fetch(`${BASE}/insiders/${encodeURIComponent(ticker)}?limit=${limit}`, {
+    headers: jsonHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Failed to load insider activity: ${resp.status}`);
+  return resp.json();
+}
+
+export interface Holding {
+  issuer: string;
+  ticker: string | null;
+  cusip: string;
+  value: number;
+  shares: number;
+  pct: number;
+}
+
+export interface FundHoldings {
+  fund: string;
+  report_period: string;
+  total_value: number;
+  total_holdings: number;
+  holdings: Holding[];
+}
+
+/** 13F holdings for a single FUND (e.g. BRK-B) — not "who holds this stock". */
+export async function getFundHoldings(fund: string, top = 25): Promise<FundHoldings> {
+  const resp = await fetch(`${BASE}/institutions/${encodeURIComponent(fund)}?top=${top}`, {
+    headers: jsonHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Failed to load fund holdings: ${resp.status}`);
+  return resp.json();
+}
