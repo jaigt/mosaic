@@ -1,0 +1,50 @@
+{
+  "_comment": "Seed retrieval eval set. Each case: a natural query + the filing/section a good retriever should surface in its top-k. 'section_contains' is a case-insensitive substring of the chunk's sec_item_section. Expand this set as the corpus grows; ingest the referenced filings before running the harness. Run: ./.venv/bin/python -m backend.eval.harness",
+  "cases": [
+    {
+      "query": "What was Apple's total net revenue for the most recent fiscal year?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_contains": "Income Statement"
+    },
+    {
+      "query": "How much cash did Apple generate from operating activities?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_contains": "Cash Flow"
+    },
+    {
+      "query": "What are Apple's total assets and total liabilities?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_contains": "Balance Sheet"
+    },
+    {
+      "query": "What are the main risk factors Apple discloses?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_contains": "Risk"
+    },
+    {
+      "query": "What does management say about gross margin trends and drivers?",
+      "ticker": "AAPL",
+      "doc_type": "10-K"
+    },
+    {
+      "query": "Describe Apple's business and primary product segments.",
+      "ticker": "AAPL",
+      "doc_type": "10-K"
+    },
+    {
+      "query": "What was Apple's research and development expense?",
+      "ticker": "AAPL",
+      "doc_type": "10-K",
+      "section_contains": "Income Statement"
+    },
+    {
+      "query": "What are Apple's contractual obligations and commitments?",
+      "ticker": "AAPL",
+      "doc_type": "10-K"
+    }
+  ]
+}
