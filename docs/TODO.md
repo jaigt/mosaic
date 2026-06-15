@@ -171,13 +171,25 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly f
       `<chart>` spec (type bar/line/area). Comparison is now functional E2E: the
       ReAct loop auto-ingests each named company, then synthesizes a multi-series
       chart.
-- [ ] **NEXT options:** (a) make native FC the default once stop-efficiency is
-      tuned + broadly verified; (b) Form 4 (insider) / 13F (institutional)
-      trackers — new EDGAR ingestion path + data model; (c) `period_of_report`
-      metadata column (P2 correctness, needs re-ingest); (d) durable/bounded
-      ingest task store (P3 ops).
+### Round 7 (2026-06-15) — holdings trackers, period_of_report, ops, hosting doc
+- [x] **Form 4 insider + 13F holdings trackers** (`backend/holdings/`) — EDGAR-only,
+      no key/quota. Per-ticker insider buy/sell (live-verified AAPL) + per-fund
+      13F top holdings (verified BRK-B). ReAct tools (results = citable synthetic
+      sources) + `GET /insiders/{ticker}` `/institutions/{fund}` + insider sidebar
+      panel. SCOPE: "which funds hold ticker X" is NOT feasible from EDGAR.
+- [x] **`period_of_report` metadata column** + injection-safe date filter.
+- [x] **Bounded ingest task store** (`_MAX_INGEST_TASKS`, evicts oldest finished).
+- [x] **Hosting/AI brainstorm** → `docs/HOSTING_AND_AI_OPTIONS.md` (TL;DR: pain is
+      rate limits not $; a paid Gemini key is pennies; when public, split deploy —
+      static FE on Cloudflare Pages, FastAPI+LanceDB on Fly.io/Railway).
+- [ ] **NEXT options:** (a) make native FC the default once stop-efficiency tuned;
+      (b) durable cross-process task store (Redis) only if multi-worker; (c) paid
+      Gemini key / Bedrock route to escape free-tier caps.
 
 ### TEST-LATER (deferred on free-tier quota — DO THIS)
+- [ ] Full live ReAct run exercising the new insider/13F tools end-to-end (the
+      data fetch is verified; the agent-calls-tool→synthesize path needs gen
+      quota). Re-ingest with period_of_report populated once quota resets.
 - [ ] Re-run the clean embedding A/B (local-bge-large vs gemini-embedding-001)
       over a corpus WITH proper table summaries, once daily gen quota resets.
 - [ ] Full live ReAct exercise that triggers a real auto-ingest end-to-end
