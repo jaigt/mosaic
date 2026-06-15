@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
-import { ExternalLink } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ExternalLink, ShieldCheck, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import FinancialChart from './Visualizer/FinancialChart';
-import { Source } from '../api';
+import { Source, VerificationResult } from '../api';
 import { Badge, cn } from './ui';
 
 interface Citation {
@@ -18,11 +18,75 @@ interface MessageProps {
   citations?: Citation[];
   sources?: Source[];
   isStreaming?: boolean;
+  /** Critic-pass result auditing the answer against its sources. Only rendered
+   *  on finished (non-streaming) assistant messages. */
+  verification?: VerificationResult;
   /** Clicking a source pill focuses that source in the SourcePanel.
    *  Kept as a (sources, index) signature so the same stable handler can be
    *  shared across messages without breaking React.memo. */
   onCitationClick?: (sources: Source[], index: number) => void;
 }
+
+// Trust signal shown under a finished answer once the critic pass returns.
+const VerificationBadge: React.FC<{ verification: VerificationResult }> = ({ verification }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (verification.status === 'supported') {
+    return (
+      <div className="mt-3">
+        <Badge tone="ledger" pill>
+          <ShieldCheck size={11} aria-hidden="true" />
+          Verified against sources
+        </Badge>
+      </div>
+    );
+  }
+
+  if (verification.status === 'caveats') {
+    const count = verification.issues.length;
+    const hasIssues = count > 0;
+    return (
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={hasIssues ? () => setExpanded((v) => !v) : undefined}
+          aria-expanded={hasIssues ? expanded : undefined}
+          className={cn(
+            'rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60',
+            hasIssues ? 'cursor-pointer transition-transform hover:scale-[1.04]' : 'cursor-default',
+          )}
+        >
+          <Badge tone="amber" pill>
+            <AlertTriangle size={11} aria-hidden="true" />
+            {count} point{count === 1 ? '' : 's'} to verify
+            {hasIssues &&
+              (expanded ? (
+                <ChevronDown size={11} aria-hidden="true" />
+              ) : (
+                <ChevronRight size={11} aria-hidden="true" />
+              ))}
+          </Badge>
+        </button>
+        {hasIssues && expanded && (
+          <ul className="mt-2 list-disc rounded-md border border-amber-400/25 bg-amber-400/[0.06] py-2 pl-7 pr-3 text-[12.5px] leading-relaxed text-amber-200/90 marker:text-amber-400/70">
+            {verification.issues.map((issue, i) => (
+              <li key={i} className="mb-1 last:mb-0">
+                {issue}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // unknown — keep it muted and unobtrusive.
+  return (
+    <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-fg-400/70">
+      Not verified
+    </div>
+  );
+};
 
 // Hoisted to module scope: this object captures nothing dynamic, so re-creating
 // it on every render needlessly forces react-markdown to re-render its subtree.
@@ -59,7 +123,7 @@ const markdownComponents: Components = {
   ),
 };
 
-const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, onCitationClick }) => {
+const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, verification, onCitationClick }) => {
   const isUser = role === 'user';
 
   // Extract chart data from content if it contains <chart> tags.
@@ -168,6 +232,10 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
               </button>
             ))}
           </div>
+        )}
+
+        {!isUser && !isStreaming && verification && (
+          <VerificationBadge verification={verification} />
         )}
       </div>
     </div>

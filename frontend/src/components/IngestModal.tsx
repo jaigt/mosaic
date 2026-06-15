@@ -1,11 +1,42 @@
 import React, { useState } from 'react';
 import { Download, CheckCircle2, AlertCircle } from 'lucide-react';
-import { ingestFiling, getIngestStatus } from '../api';
+import { ingestFiling, getIngestStatus, IngestStatus } from '../api';
 import { Modal, Input, Select, Button, cn } from './ui';
 
 interface IngestModalProps {
   open: boolean;
   onClose: () => void;
+}
+
+/** Turn the backend's live `stage` (+ `detail` counts) into a human-readable
+ *  progress line. Exported for unit testing. */
+export function stageLabel(stage: string | null, detail: Record<string, unknown> = {}): string {
+  const num = (key: string): number | null => {
+    const v = detail[key];
+    return typeof v === 'number' ? v : null;
+  };
+  switch (stage) {
+    case 'resolving':
+      return 'Resolving filing on SEC EDGAR…';
+    case 'fetching':
+      return 'Fetching filing from SEC EDGAR…';
+    case 'parsing':
+      return 'Parsing document…';
+    case 'summarizing_tables': {
+      const t = num('tables');
+      return t != null ? `Summarizing ${t} tables…` : 'Summarizing tables…';
+    }
+    case 'embedding': {
+      const c = num('chunks');
+      return c != null ? `Embedding ${c} chunks…` : 'Embedding chunks…';
+    }
+    case 'storing':
+      return 'Storing chunks…';
+    case 'done':
+      return 'Finishing up…';
+    default:
+      return 'Processing SEC filing…';
+  }
 }
 
 const IngestModal: React.FC<IngestModalProps> = ({ open, onClose }) => {
@@ -36,22 +67,27 @@ const IngestModal: React.FC<IngestModalProps> = ({ open, onClose }) => {
         year ? parseInt(year) : undefined,
       );
       const taskId = result.task_id;
+      const isDone = (s: IngestStatus) =>
+        s.state === 'completed' || s.status.startsWith('completed:');
+      const isFailed = (s: IngestStatus) =>
+        s.state === 'failed' || s.status.startsWith('failed:');
+
       const poll = async (): Promise<void> => {
         const statusResp = await getIngestStatus(taskId);
-        if (statusResp.status === 'running') {
-          setMessage('Processing SEC filing...');
-          return new Promise((resolve) => setTimeout(() => resolve(poll()), 2500));
-        } else if (statusResp.status.startsWith('completed:')) {
-          const chunks = statusResp.status.split(':')[1];
+        if (isDone(statusResp)) {
+          const chunks =
+            statusResp.chunks ?? statusResp.status.split(':')[1] ?? '';
           setStatus('success');
           setMessage(`Successfully ingested ${chunks} chunks for ${ticker.trim().toUpperCase()}`);
-        } else if (statusResp.status.startsWith('failed:')) {
-          const reason = statusResp.status.slice('failed:'.length);
+        } else if (isFailed(statusResp)) {
+          const reason =
+            statusResp.error ?? statusResp.status.slice('failed:'.length);
           setStatus('error');
           setMessage(reason || 'Ingestion failed');
         } else {
-          setStatus('error');
-          setMessage(`Unexpected status: ${statusResp.status}`);
+          // Still running — surface the live stage as a progress line.
+          setMessage(stageLabel(statusResp.stage, statusResp.detail ?? {}));
+          return new Promise((resolve) => setTimeout(() => resolve(poll()), 2500));
         }
       };
       await poll();

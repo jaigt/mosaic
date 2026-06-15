@@ -29,12 +29,19 @@ export interface FilingInfo {
   chunks: number;
 }
 
+export interface VerificationResult {
+  status: 'supported' | 'caveats' | 'unknown';
+  issues: string[];
+}
+
 export type SseEvent =
   | { type: 'status'; data: string }
   | { type: 'chunk'; data: string }
   | { type: 'sources'; data: Source[] }
   | { type: 'done'; data: null }
-  | { type: 'error'; data: string };
+  | { type: 'error'; data: string }
+  | { type: 'agent_step'; data: { kind: string; label: string } }
+  | { type: 'verification'; data: VerificationResult };
 
 export async function* streamChat(
   message: string,
@@ -93,7 +100,16 @@ export async function ingestFiling(
   return resp.json();
 }
 
-export async function getIngestStatus(taskId: string): Promise<{ status: string }> {
+export interface IngestStatus {
+  status: string;
+  state: string;
+  chunks: number | null;
+  error: string | null;
+  stage: string | null;
+  detail: Record<string, unknown>;
+}
+
+export async function getIngestStatus(taskId: string): Promise<IngestStatus> {
   const resp = await fetch(`${BASE}/ingest/status/${taskId}`);
   if (!resp.ok) throw new Error('Failed to get status');
   return resp.json();

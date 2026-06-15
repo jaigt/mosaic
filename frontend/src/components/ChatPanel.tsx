@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Upload, Trash2, X, FileText, Square } from 'lucide-react';
 import Message from './Message';
-import AgentState, { AgentStep } from './AgentState';
-import { streamChat, Source, FilingInfo } from '../api';
+import AgentState, { AgentStep, AgentStepKind } from './AgentState';
+import { streamChat, Source, FilingInfo, VerificationResult } from '../api';
 import { Button, Badge, Textarea, Card } from './ui';
 
 interface ChatMessage {
@@ -11,6 +11,7 @@ interface ChatMessage {
   content: string;
   sources?: Source[];
   isStreaming?: boolean;
+  verification?: VerificationResult;
 }
 
 // Order slips — clickable starters shown on the empty desk.
@@ -119,8 +120,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
         if (event.type === 'status') {
           setAgentSteps(prev => [
             ...prev.map(s => s.status === 'running' ? { ...s, status: 'completed' as const } : s),
-            { id: String(Date.now()), label: event.data, status: 'running' as const },
+            { id: crypto.randomUUID(), label: event.data, status: 'running' as const, kind: 'status' },
           ]);
+        } else if (event.type === 'agent_step') {
+          // Autonomous agent actions. `ingest` reads as in-progress until the
+          // following `retry_search`/`ingest_failed` step resolves it; an
+          // `ingest_failed` lands as a completed (warning) step.
+          const kind = event.data.kind as AgentStepKind;
+          const completesIngest = kind === 'retry_search' || kind === 'ingest_failed';
+          const stepStatus = kind === 'ingest' ? ('running' as const) : ('completed' as const);
+          setAgentSteps(prev => [
+            ...prev.map(s =>
+              s.status === 'running' && (completesIngest || s.kind !== 'ingest')
+                ? { ...s, status: 'completed' as const }
+                : s,
+            ),
+            { id: crypto.randomUUID(), label: event.data.label, status: stepStatus, kind },
+          ]);
+        } else if (event.type === 'verification') {
+          const verSnap = event.data;
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, verification: verSnap } : m
+          ));
         } else if (event.type === 'chunk') {
           accumulated += event.data;
           const snap = accumulated;
@@ -265,6 +286,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             content={msg.content}
             sources={msg.sources}
             isStreaming={msg.isStreaming}
+            verification={msg.verification}
             onCitationClick={onCitationClick}
           />
         ))}
