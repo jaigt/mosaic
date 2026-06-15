@@ -16,6 +16,7 @@ from backend.pipeline import llm
         ("groq/llama-3.3-70b-versatile", "openai"),
         ("mistral/mistral-large-latest", "openai"),
         ("ollama/qwen2.5", "openai"),
+        ("mlx/qwen2.5-32b-instruct", "openai"),
     ],
 )
 def test_provider_routing(model, expected):
@@ -116,3 +117,20 @@ def test_ollama_needs_no_key(monkeypatch):
 
     assert real_model == "qwen2.5"
     assert captured["base_url"] == "http://localhost:11434/v1"
+
+
+def test_mlx_uses_configured_base_url(monkeypatch):
+    """oMLX/mlx is keyless local — must use MLX_BASE_URL and need no key."""
+    captured = {}
+
+    class _FakeClient:
+        def __init__(self, api_key=None, base_url=None, max_retries=None):
+            captured["base_url"] = base_url
+
+    monkeypatch.setattr("openai.OpenAI", _FakeClient)
+    monkeypatch.setattr(llm.settings, "mlx_base_url", "http://localhost:8081/v1", raising=False)
+
+    client, real_model = llm._openai_client_and_model("mlx/qwen2.5-32b-instruct")
+
+    assert real_model == "qwen2.5-32b-instruct"
+    assert captured["base_url"] == "http://localhost:8081/v1"

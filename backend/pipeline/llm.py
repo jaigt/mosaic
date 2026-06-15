@@ -185,7 +185,11 @@ _OPENAI_COMPAT = {
     "mistral": ("https://api.mistral.ai/v1", "mistral_api_key",
                 "free key at https://console.mistral.ai"),
     "ollama": (None, None, "run a local model: `ollama serve` (https://ollama.com)"),
+    "mlx": (None, None, "start the oMLX / mlx_lm OpenAI-compatible server (set MLX_BASE_URL to its port)"),
 }
+
+# Keyless local providers: no API key, base_url comes from settings.
+_LOCAL_BASE_URLS = {"ollama": "ollama_base_url", "mlx": "mlx_base_url"}
 
 
 def _provider(model: str) -> str:
@@ -217,8 +221,9 @@ def _openai_client_and_model(model: str):
     if prefix in _OPENAI_COMPAT:
         base_url, key_attr, hint = _OPENAI_COMPAT[prefix]
         real_model = model.split("/", 1)[1]
-        if prefix == "ollama":
-            return OpenAI(api_key="ollama", base_url=settings.ollama_base_url, max_retries=0), real_model
+        if prefix in _LOCAL_BASE_URLS:  # keyless local server (ollama / mlx / oMLX)
+            local_url = getattr(settings, _LOCAL_BASE_URLS[prefix])
+            return OpenAI(api_key="local", base_url=local_url, max_retries=0), real_model
         key = getattr(settings, key_attr)
         if not key:
             raise RuntimeError(

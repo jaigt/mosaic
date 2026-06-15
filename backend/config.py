@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     mistral_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434/v1"
+    # oMLX / mlx_lm OpenAI-compatible server. oMLX defaults to :8000 — which
+    # collides with this backend — so point it at a different port (e.g. 8081)
+    # in the oMLX app and set MLX_BASE_URL to match. Use via "mlx/<model>".
+    mlx_base_url: str = "http://localhost:8081/v1"
     sec_user_agent: str
     lancedb_path: str = "./data/lancedb"
     # Stable GA models (verified live 2026-06-15). NOT *-preview: this project
