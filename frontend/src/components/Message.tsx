@@ -150,7 +150,7 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
               : 'font-display text-[14px] leading-none text-amber-300',
           )}
         >
-          {isUser ? 'YOU' : 'V'}
+          {isUser ? 'YOU' : 'M'}
         </span>
       </div>
 
