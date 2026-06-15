@@ -14,9 +14,38 @@ import logging
 import time
 from typing import Sequence
 
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class EmbeddingRateLimit(Exception):
+    """Raised when an embedding provider returns a rate-limit (429) error, so the
+    retry layer waits long enough for a per-minute quota to refill."""
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "429" in msg or "resource_exhausted" in msg or "rate limit" in msg or "quota" in msg
+
+
+# Embedding free tiers are throttled per-minute (e.g. Gemini's
+# embed_content_free_tier_requests = 100/min). On a 429 we back off for up to a
+# minute — long enough for the window to refill — rather than failing the whole
+# ingest. Non-rate-limit errors are NOT retried (they won't fix themselves).
+_embed_retry = retry(
+    retry=retry_if_exception_type(EmbeddingRateLimit),
+    wait=wait_exponential(multiplier=2, min=4, max=60),
+    stop=stop_after_attempt(6),
+    reraise=True,
+)
 
 # Dimensions by model. Models must be listed here explicitly — silently
 # defaulting an unknown model's dimension previously let a stale .env value
@@ -62,6 +91,21 @@ def embed_query(text: str) -> list[float]:
     return _embed_google([text], model, task="RETRIEVAL_QUERY")[0]
 
 
+@_embed_retry
+def _embed_google_batch(client, model: str, batch: list[str], task: str) -> list[list[float]]:
+    """Embed one batch; translate a 429 into EmbeddingRateLimit so it's retried."""
+    try:
+        response = client.models.embed_content(
+            model=model, contents=batch, config={"task_type": task},
+        )
+    except Exception as e:
+        if _is_rate_limit(e):
+            logger.warning(f"Embedding rate-limited; backing off: {str(e)[:120]}")
+            raise EmbeddingRateLimit(str(e)) from e
+        raise
+    return [e.values for e in response.embeddings]
+
+
 def _embed_google(texts: list[str], model: str, task: str) -> list[list[float]]:
     from google import genai
     client = genai.Client(api_key=settings.google_api_key)
@@ -69,16 +113,24 @@ def _embed_google(texts: list[str], model: str, task: str) -> list[list[float]]:
     batch_size = 100
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        response = client.models.embed_content(
-            model=model,
-            contents=batch,
-            config={"task_type": task},
-        )
-        results.extend([e.values for e in response.embeddings])
+        results.extend(_embed_google_batch(client, model, batch, task))
         if i + batch_size < len(texts):
             time.sleep(_BATCH_DELAY)
     logger.debug(f"Google embedded {len(texts)} texts")
     return results
+
+
+@_embed_retry
+def _embed_openai_batch(client, model: str, batch: list[str]) -> list[list[float]]:
+    """Embed one batch; translate a 429 into EmbeddingRateLimit so it's retried."""
+    try:
+        response = client.embeddings.create(model=model, input=batch)
+    except Exception as e:
+        if _is_rate_limit(e):
+            logger.warning(f"Embedding rate-limited; backing off: {str(e)[:120]}")
+            raise EmbeddingRateLimit(str(e)) from e
+        raise
+    return [e.embedding for e in response.data]
 
 
 def _embed_openai(texts: list[str], model: str, task: str) -> list[list[float]]:
@@ -91,8 +143,7 @@ def _embed_openai(texts: list[str], model: str, task: str) -> list[list[float]]:
     batch_size = 100
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        response = client.embeddings.create(model=model, input=batch)
-        results.extend([e.embedding for e in response.data])
+        results.extend(_embed_openai_batch(client, model, batch))
         if i + batch_size < len(texts):
             time.sleep(_BATCH_DELAY)
     logger.debug(f"OpenAI embedded {len(texts)} texts")
