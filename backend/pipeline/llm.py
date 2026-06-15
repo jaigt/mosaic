@@ -19,12 +19,51 @@ All providers are optional at import time — a missing API key only raises an
 error if you actually try to call that provider.
 """
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Generator, Optional
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# ── Transient-error retry ──────────────────────────────────────────────────────
+# Free/low-cost providers (notably Cerebras) intermittently return 429
+# "queue_exceeded" / "high traffic" or 503/529 under load — these are transient,
+# not hard quota errors, and succeed on a quick retry. Hard quota errors (e.g.
+# Gemini's daily cap) and auth errors are NOT retried; they re-raise immediately.
+
+_TRANSIENT_SUBSTRINGS = (
+    "queue_exceeded", "too_many_requests", "high traffic",
+    "overloaded", "try again", "temporarily unavailable",
+)
+
+
+def _is_transient(exc: Exception) -> bool:
+    code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if code in (429, 503, 529):
+        # 429 can also mean a hard daily quota — only retry the "transient" flavor.
+        if code == 429:
+            return any(s in str(exc).lower() for s in _TRANSIENT_SUBSTRINGS)
+        return True
+    return any(s in str(exc).lower() for s in _TRANSIENT_SUBSTRINGS)
+
+
+def _with_retry(call, *, attempts: int = 5, base_delay: float = 1.5):
+    """Run ``call()``, retrying transient overload errors with exponential backoff.
+    Used for the request-initiating call; for streaming, wrap stream creation only
+    (before any token is yielded) so retries never duplicate output."""
+    for i in range(attempts):
+        try:
+            return call()
+        except Exception as exc:  # noqa: BLE001 — re-raised below unless transient
+            if not _is_transient(exc) or i == attempts - 1:
+                raise
+            delay = base_delay * (2 ** i)
+            logger.warning("Transient LLM error (attempt %d/%d), retrying in %.1fs: %s",
+                           i + 1, attempts, delay, str(exc)[:120])
+            time.sleep(delay)
 
 
 # ── Native tool / function calling ────────────────────────────────────────────
@@ -223,11 +262,11 @@ def _generate_google(prompt: str, model: str) -> str:
 
 def _generate_openai(prompt: str, model: str) -> str:
     client, real_model = _openai_client_and_model(model)
-    response = client.chat.completions.create(
+    response = _with_retry(lambda: client.chat.completions.create(
         model=real_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1024,
-    )
+    ))
     return response.choices[0].message.content
 
 
@@ -270,13 +309,16 @@ def _stream_google(prompt: str, model: str) -> Generator[str, None, None]:
 def _stream_openai(prompt: str, model: str) -> Generator[str, None, None]:
     client, real_model = _openai_client_and_model(model)
     logger.info(f"Synthesizing via OpenAI-compatible endpoint: {model}")
-    with client.chat.completions.create(
+    # Retry only the stream-opening call: the transient 429 is raised here, before
+    # any token is produced, so a retry can't duplicate already-yielded output.
+    stream = _with_retry(lambda: client.chat.completions.create(
         model=real_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2048,
         stream=True,
-    ) as stream:
-        for chunk in stream:
+    ))
+    with stream as s:
+        for chunk in s:
             text = chunk.choices[0].delta.content
             if text:
                 yield text
