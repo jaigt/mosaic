@@ -33,7 +33,9 @@ def test_ingest_starts_and_status_is_backward_compatible(monkeypatch):
 
     done = threading.Event()
 
-    def fake_ingest(ticker, document_type, year):
+    def fake_ingest(ticker, document_type, year, on_progress=None):
+        if on_progress is not None:
+            on_progress({"stage": "embedding", "chunks": 42})
         return 42
 
     monkeypatch.setattr(main, "ingest_filing", fake_ingest)
@@ -62,12 +64,15 @@ def test_ingest_starts_and_status_is_backward_compatible(monkeypatch):
     assert s["state"] == "completed"
     assert s["chunks"] == 42
     assert s["error"] is None
+    # Live progress stage from the ingest callback surfaces in status.
+    assert s["stage"] == "embedding"
+    assert s["detail"] == {"chunks": 42}
 
 
 def test_ingest_failure_reports_failed_status(monkeypatch):
     main._ingest_tasks.clear()
 
-    def boom(ticker, document_type, year):
+    def boom(ticker, document_type, year, on_progress=None):
         raise RuntimeError("kaboom")
 
     monkeypatch.setattr(main, "ingest_filing", boom)
@@ -118,6 +123,7 @@ def test_producer_stops_when_client_disconnects(monkeypatch):
     monkeypatch.setattr(
         main, "retrieve", lambda **kw: [_FakeChunk()]
     )
+    monkeypatch.setattr(main, "extract_filters", lambda q: {})
 
     produced = {"count": 0}
     stop_seen = threading.Event()
@@ -175,6 +181,7 @@ def test_synthesis_error_is_surfaced_to_client(monkeypatch):
     provider outage) must reach the client as an SSE error event — not end the
     stream silently with an empty answer."""
     monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])
+    monkeypatch.setattr(main, "extract_filters", lambda q: {})
 
     def broken_stream_generate(prompt, model):
         raise RuntimeError("GOOGLE_API_KEY invalid")
@@ -217,8 +224,35 @@ def test_short_payload_untouched():
     assert main._truncate_payload("short", "table") == "short"
 
 
+def _events(req, fake_request):
+    """Drive _chat_stream to completion and return decoded event payloads."""
+    async def drive():
+        out = []
+        async for ev in main._chat_stream(req, fake_request):
+            out.append(json.loads(ev[len("data: "):].strip()))
+        return out
+
+    return asyncio.run(drive())
+
+
+class _AlwaysConnected:
+    async def is_disconnected(self):
+        return False
+
+
+def _stub_agent_llm(monkeypatch, *, filters=None, verification_status="supported"):
+    """Stub the LLM-backed agent steps so the chat path makes no network call."""
+    monkeypatch.setattr(main, "extract_filters", lambda q: dict(filters or {}))
+    from backend.agent.planner import VerificationResult
+    monkeypatch.setattr(
+        main, "verify_answer",
+        lambda answer, sources, **kw: VerificationResult(status=verification_status),
+    )
+
+
 def test_chat_stream_happy_path_shape(monkeypatch):
     monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])
+    _stub_agent_llm(monkeypatch)
 
     def fake_stream_generate(prompt, model):
         yield "Hello "
@@ -226,26 +260,64 @@ def test_chat_stream_happy_path_shape(monkeypatch):
 
     monkeypatch.setattr(main, "stream_generate", fake_stream_generate)
 
-    class FakeRequest:
-        async def is_disconnected(self):
-            return False
-
-    async def drive():
-        events = []
-        async for ev in main._chat_stream(ChatRequest(message="hi"), FakeRequest()):
-            events.append(ev)
-        return events
-
-    events = asyncio.run(drive())
-    types = [json.loads(e[len("data: "):].strip())["type"] for e in events]
+    events = _events(ChatRequest(message="hi"), _AlwaysConnected())
+    types = [e["type"] for e in events]
     assert "status" in types
     assert "chunk" in types
     assert "sources" in types
+    assert "verification" in types          # critic pass ran
     assert types[-1] == "done"
-    # Tokens streamed through.
-    chunks = [
-        json.loads(e[len("data: "):].strip())["data"]
-        for e in events
-        if json.loads(e[len("data: "):].strip())["type"] == "chunk"
-    ]
+    chunks = [e["data"] for e in events if e["type"] == "chunk"]
     assert "Hello " in chunks and "world" in chunks
+    verif = next(e["data"] for e in events if e["type"] == "verification")
+    assert verif["status"] == "supported"
+
+
+def test_chat_auto_ingests_missing_ticker(monkeypatch):
+    """When the user names a ticker the corpus lacks, the agent ingests it from
+    EDGAR mid-answer, emits agent_step events, and re-searches."""
+    # First search returns AAPL (wrong ticker); after ingest, returns NVDA.
+    calls = {"retrieve": 0, "ingest": []}
+
+    def fake_retrieve(**kw):
+        calls["retrieve"] += 1
+        if calls["retrieve"] == 1:
+            return [_FakeChunk()]            # AAPL — not the requested NVDA
+        nvda = _FakeChunk()
+        nvda.chunk.ticker = "NVDA"
+        return [nvda]
+
+    def fake_ingest(ticker, document_type, year, on_progress=None):
+        calls["ingest"].append((ticker, document_type, year))
+        return 50
+
+    monkeypatch.setattr(main, "retrieve", fake_retrieve)
+    monkeypatch.setattr(main, "ingest_filing", fake_ingest)
+    _stub_agent_llm(monkeypatch, filters={"ticker": "NVDA"})
+    monkeypatch.setattr(main, "stream_generate", lambda p, model: iter(["answer"]))
+
+    events = _events(ChatRequest(message="How is NVDA doing?"), _AlwaysConnected())
+
+    # It ingested NVDA and searched twice (before + after ingest).
+    assert calls["ingest"] == [("NVDA", "10-K", None)]
+    assert calls["retrieve"] == 2
+    steps = [e["data"] for e in events if e["type"] == "agent_step"]
+    kinds = [s["kind"] for s in steps]
+    assert "ingest" in kinds and "retry_search" in kinds
+    assert [e for e in events if e["type"] == "sources"]  # answered after ingest
+
+
+def test_chat_auto_ingest_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(main.settings, "enable_auto_ingest", False)
+    monkeypatch.setattr(main, "retrieve", lambda **kw: [_FakeChunk()])  # AAPL only
+    ingested = []
+    monkeypatch.setattr(
+        main, "ingest_filing",
+        lambda **kw: ingested.append(kw),
+    )
+    _stub_agent_llm(monkeypatch, filters={"ticker": "NVDA"})
+    monkeypatch.setattr(main, "stream_generate", lambda p, model: iter(["answer"]))
+
+    events = _events(ChatRequest(message="How is NVDA?"), _AlwaysConnected())
+    assert ingested == []  # no auto-ingest when disabled
+    assert not [e for e in events if e["type"] == "agent_step"]

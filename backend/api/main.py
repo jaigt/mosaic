@@ -27,9 +27,11 @@ from backend.api.observability import (
 from backend.api.security import enforce_rate_limit, require_api_key
 from backend.config import settings
 from backend.models.schemas import ChatRequest, IngestRequest, QueryRequest
+from backend.agent import plan_auto_ingest, verify_answer
 from backend.pipeline.ingest import ingest_filing
 from backend.pipeline.llm import stream_generate
 from backend.pipeline.store import get_table
+from backend.retrieval.query_parser import extract_filters
 from backend.retrieval.reformulate import condense_query
 from backend.retrieval.retriever import retrieve
 
@@ -113,8 +115,16 @@ class IngestTask:
     state: IngestState = IngestState.RUNNING
     chunks: Optional[int] = None
     error: Optional[str] = None
+    stage: Optional[str] = None          # live pipeline phase (resolving/fetching/…)
+    detail: dict = field(default_factory=dict)  # stage-specific counts for the UI
     started_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+
+    def mark_stage(self, event: dict) -> None:
+        """Record a live pipeline phase from the ingest progress callback."""
+        self.stage = event.get("stage")
+        self.detail = {k: v for k, v in event.items() if k != "stage"}
+        self.updated_at = time.time()
 
     @property
     def legacy_status(self) -> str:
@@ -143,6 +153,8 @@ class IngestTask:
             "state": self.state.value,
             "chunks": self.chunks,
             "error": self.error,
+            "stage": self.stage,
+            "detail": self.detail,
             "started_at": self.started_at,
             "updated_at": self.updated_at,
         }
@@ -185,11 +197,15 @@ async def _run_ingest(task_id: str, request: IngestRequest):
     task = _ingest_tasks.get(task_id)
     try:
         logger.info(f"Starting background ingestion for {task_id}")
+        # Forward pipeline-stage events onto the typed task so /ingest/status
+        # reflects live progress (resolving → fetching → … → storing).
+        on_progress = task.mark_stage if task is not None else None
         count = await asyncio.to_thread(
             ingest_filing,
             ticker=request.ticker,
             document_type=request.document_type,
             year=request.year,
+            on_progress=on_progress,
         )
         if task is not None:
             task.mark_completed(count)
@@ -249,7 +265,15 @@ async def list_filings():
 async def chat(request: ChatRequest, http_request: Request):
     """
     Conversational endpoint. Returns a streaming SSE response.
-    Each event is a JSON object: {"type": "status"|"chunk"|"sources"|"done", "data": ...}
+    Each event is a JSON object: {"type": ..., "data": ...} where type is one of:
+      status        — human-readable progress line (data: str)
+      agent_step    — an autonomous action the agent took, e.g. auto-ingesting a
+                      missing filing (data: {"kind": str, "label": str})
+      chunk         — a synthesized answer token (data: str)
+      verification  — critic-pass result (data: {"status": str, "issues": [str]})
+      sources       — retrieved source metadata for the citation panel (data: list)
+      error         — failure message (data: str)
+      done          — end of stream (data: null)
     """
     return StreamingResponse(
         _chat_stream(request, http_request),
@@ -288,21 +312,60 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
         # synthesis and history formatting below. condense_query degrades
         # gracefully to the original message if the heuristic skips it or the
         # LLM call fails, so retrieval is never broken by reformulation.
-        yield sse("status", "Extracting filters from query...")
+        yield sse("status", "Reading your question...")
         search_query = await asyncio.to_thread(
             condense_query, request.conversation_history, request.message
         )
+
+        # Resolve the target filing once. Explicit request filters always win
+        # over anything inferred from the query text; the inferred values feed
+        # both retrieval pre-filtering and the auto-ingest decision below.
+        auto_filters = await asyncio.to_thread(extract_filters, search_query)
+        eff_ticker = request.ticker or auto_filters.get("ticker")
+        eff_year = request.year or auto_filters.get("year")
+        eff_doc_type = request.document_type or auto_filters.get("document_type")
+
+        yield sse("status", "Searching the filing corpus...")
         chunks = await asyncio.to_thread(
-            retrieve,
-            query=search_query,
-            top_k=5,
-            ticker=request.ticker,
-            year=request.year,
-            document_type=request.document_type
+            retrieve, query=search_query, top_k=5,
+            ticker=eff_ticker, year=eff_year, document_type=eff_doc_type,
         )
 
+        # ── Corpus autonomy: fetch a missing filing on demand ────────────────
+        # If the user named a ticker the retrieval didn't surface, go get it from
+        # EDGAR mid-answer and re-search — instead of dead-ending on "ingest a
+        # filing first". This is the headline agent behaviour.
+        if settings.enable_auto_ingest:
+            plan = plan_auto_ingest(eff_ticker, eff_doc_type, eff_year, chunks)
+            if plan is not None:
+                yield sse("agent_step", {
+                    "kind": "ingest",
+                    "label": f"No {plan.label} in the corpus yet — fetching it from SEC EDGAR…",
+                })
+                try:
+                    await asyncio.to_thread(
+                        ingest_filing, ticker=plan.ticker,
+                        document_type=plan.document_type, year=plan.year,
+                    )
+                    yield sse("agent_step", {
+                        "kind": "retry_search",
+                        "label": f"Ingested {plan.label}. Re-searching…",
+                    })
+                    chunks = await asyncio.to_thread(
+                        retrieve, query=search_query, top_k=5,
+                        ticker=eff_ticker, year=eff_year, document_type=eff_doc_type,
+                    )
+                except Exception as e:  # noqa: BLE001 — surfaced to the user as a step
+                    logger.warning(f"Auto-ingest failed for {plan.label}: {e}")
+                    yield sse("agent_step", {
+                        "kind": "ingest_failed",
+                        "label": f"Couldn't fetch {plan.label} from EDGAR ({e}).",
+                    })
+
         if not chunks:
-            yield sse("chunk", "I couldn't find relevant SEC filing data for your query. Try ingesting a filing first.")
+            yield sse("chunk", "I couldn't find relevant SEC filing data for your query, "
+                               "and couldn't fetch a matching filing from EDGAR. Try a "
+                               "different ticker or ingest a filing manually.")
             yield sse("done", None)
             return
 
@@ -335,6 +398,9 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
         queue: asyncio.Queue = asyncio.Queue(maxsize=_SSE_QUEUE_MAXSIZE)
         stop_event = threading.Event()
         _DONE = object()
+        # Accumulate streamed tokens so the post-synthesis critic pass can audit
+        # the full answer against the sources.
+        answer_parts: list[str] = []
 
         def _enqueue(item) -> None:
             # Runs on the event loop thread. If the consumer is slow and the
@@ -397,6 +463,7 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
 
                 if item is _DONE:
                     break
+                answer_parts.append(item)
                 yield sse("chunk", item)
 
                 if await _client_gone(http_request):
@@ -421,7 +488,17 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
             yield sse("done", None)
             return
 
-        # Step 4: Send source metadata for frontend citation panel
+        # Step 4: Self-verification — audit the answer's claims against the
+        # sources before the user trusts it. Non-blocking: an "unknown" result
+        # (LLM/parse failure) is sent without withholding the answer.
+        if settings.enable_self_verification:
+            yield sse("status", "Verifying the answer against sources...")
+            verification = await asyncio.to_thread(
+                verify_answer, "".join(answer_parts), sources_context
+            )
+            yield sse("verification", verification.to_dict())
+
+        # Step 5: Send source metadata for frontend citation panel
         sources_payload = [
             {
                 "ticker": c.chunk.ticker,
