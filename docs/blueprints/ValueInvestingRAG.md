@@ -1,5 +1,14 @@
 # Value Investing RAG: System Architecture Blueprint
 
+> **📜 HISTORICAL — the original (pre-build) backend blueprint.** The architecture
+> here (LanceDB, two-pass table summarization, metadata pre-filter + vector search,
+> multi-provider routing, the `DocumentChunk` schema) is essentially what shipped.
+> BUT specifics are out of date: model names (`Gemini 3.1 Pro`, `text-embedding-004`)
+> are NOT what's used (synthesis = `gemini-2.5-flash`, embeddings = local
+> `bge-large`), and `chunk_type` is `text`/`table` only. **For current backend
+> reality use [`../reference/BACKEND.md`](../reference/BACKEND.md) and
+> [`../PROJECT_STATUS_AND_ROADMAP.md`](../PROJECT_STATUS_AND_ROADMAP.md).**
+
 ## Context for AI Assistant
 **Role:** You are acting as a Senior AI Software Engineer assisting with the development of a custom Retrieval-Augmented Generation (RAG) pipeline for value investing.
 **Project Goal:** Build a local, lightweight system capable of parsing, chunking, and reasoning over complex SEC financial filings (10-Ks, 10-Qs) to outperform generic document-chat interfaces.

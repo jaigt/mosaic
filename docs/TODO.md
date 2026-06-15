@@ -5,8 +5,11 @@ Companion to `docs/PROJECT_STATUS_AND_ROADMAP.md` (background, architecture
 invariants, what's already done). **Keep this file updated** — check items off,
 add new ones, move things between sections as priorities shift.
 
-Last reconciled against code: 2026-06-09 (after round 3: config-drift fixes,
-synthesis-error surfacing, citation UX, chunk overlap, deprecation cleanup).
+Last reconciled against code: 2026-06-15 (rounds 5–7 + UX/visual audits + the
+Mosaic rebrand). NOTE: the dated round-history below is preserved as-is — some
+older entries mention choices later corrected (e.g. round 3's `gemini-3.x`
+model names turned out to be invalid; current models are pinned in P0 + the
+backend reference). Trust the P0/feature sections and PROJECT_STATUS for current state.
 
 Status legend: `[ ]` not started · `[~]` partial · `[x]` done (leave briefly for context, then prune)
 

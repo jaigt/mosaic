@@ -1,5 +1,11 @@
 # PLAN.md: AI Portfolio Impact Analyzer (PoC)
 
+> **💭 SPECULATIVE — NOT built, NOT on the Mosaic roadmap.** This is a separate
+> concept exploration (a LangGraph + Neo4j + Groq supply-chain risk analyzer over a
+> Schwab CSV) with a different stack from Mosaic. Don't confuse it with the planned
+> **watchlist / portfolio view** in `docs/TODO.md`, which would be built in Mosaic's
+> own stack (FastAPI + LanceDB + React). Kept as an idea archive only.
+
 ## 1. Project Overview
 A multi-agent, Directed Acyclic Graph (DAG) workflow that ingests SEC filings and earnings call transcripts, extracts supply chain and operational risks, and maps them to a specific user's portfolio holdings using a Knowledge Graph. 
 

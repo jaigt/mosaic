@@ -1,5 +1,13 @@
 # Value Investing RAG: Web Frontend & UI Architecture Blueprint
 
+> **📜 HISTORICAL — and the build DIVERGED from it.** This proposed a Streamlit POC
+> then a Next.js + Vercel AI SDK + vanilla-CSS app. **None of that is what shipped:**
+> the frontend is **Vite + React + TypeScript + Tailwind v4** (no Streamlit, no
+> Next.js, no Vercel AI SDK), with a 3-theme system, agent step-timeline,
+> insider/smart-money panels, and comparison charts. The split-pane + generative-UI
+> + agentic-state *ideas* here did carry through. **For current frontend reality use
+> [`../reference/FRONTEND_IMPLEMENTATION.md`](../reference/FRONTEND_IMPLEMENTATION.md).**
+
 ## Context for AI Assistant
 **Role:** You are acting as a Senior Frontend/Full-Stack Software Engineer assisting with the UI/UX architecture for a custom financial Retrieval-Augmented Generation (RAG) web application.
 **Project Goal:** Build a scalable, responsive web interface that allows the user to query complex SEC financial filings, view source citations, and render structured data (tables/charts) alongside conversational AI responses.

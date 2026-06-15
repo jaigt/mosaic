@@ -1,8 +1,13 @@
 # Blueprint: Insider Transactions & Institutional Holdings
 
-> **Status:** Future work — not part of the core RAG pipeline.
-> These are separate analytics layers that complement the 10-K/10-Q RAG system
-> but operate on structured *transaction/position* data rather than narrative documents.
+> **✅ STATUS: BUILT (round 7) — this is a historical blueprint.** The feature
+> shipped as `backend/holdings/` (Form 4 insider tracker, 13F fund holdings, and a
+> "smart-money" curated-superinvestor index for "which funds hold ticker X"), with
+> `/insiders`, `/institutions`, `/smart-money` endpoints, ReAct agent tools, and
+> sidebar panels. **The edgartools API sketches below are pre-implementation and
+> differ from what shipped** (the real code uses `filing.obj().to_dataframe()` for
+> Form 4 and `.infotable` for 13F). Kept only for the "why it matters" rationale —
+> see `PROJECT_STATUS_AND_ROADMAP.md` + `backend/holdings/` for the real thing.
 
 ---
 
