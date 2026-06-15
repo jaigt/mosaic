@@ -60,7 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         'flex flex-col overflow-hidden border-line bg-ink-900/55 backdrop-blur-sm',
         isMobile
           ? 'fixed inset-y-0 left-0 z-50 w-[min(86vw,var(--sidebar-width))] border-r shadow-panel'
-          : 'w-[var(--sidebar-width)] border-r',
+          : 'w-[var(--sidebar-width)] shrink-0 border-r',
       )}
       aria-label="Filing ledger navigation"
     >

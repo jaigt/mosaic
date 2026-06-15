@@ -100,7 +100,7 @@ const App: React.FC = () => {
   return (
     <div
       className={cn(
-        'flex h-screen w-screen overflow-hidden',
+        'flex h-screen w-full overflow-hidden',
         'flex-col md:flex-row',
         isResizing ? 'cursor-col-resize select-none' : 'cursor-default',
       )}
@@ -129,7 +129,7 @@ const App: React.FC = () => {
         onCloseDrawer={() => setDrawerOpen(false)}
       />
 
-      <main className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:flex-row md:p-3">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 md:flex-row md:p-3">
         <div
           className="flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-none"
           style={isMobile ? undefined : { width: `${leftWidth}%` }}

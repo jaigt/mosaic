@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   BarChart,
   Bar,
@@ -13,6 +13,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { useTheme } from '../../hooks/useTheme';
 
 /** A single row of chart data: a `name` label plus one or more numeric series. */
 export type ChartRow = { name: string } & Record<string, string | number>;
@@ -39,10 +40,9 @@ interface FinancialChartProps {
 }
 
 /**
- * In-theme series palette, CSS-var-backed and consistent with index.css:
- * brass-gold first (matches the legacy single-bar `#d2ad52`), then a
- * complementary ledger-mint, azure, amber-light, crimson and deep brass.
- * Series colours cycle through this list in order.
+ * Fallback series palette (the Study-theme hexes). The live colours are read
+ * from CSS variables per theme (see SERIES_VARS) so the chart re-themes with the
+ * rest of the app; these are only used for SSR / tests where no DOM is present.
  */
 export const SERIES_COLORS = [
   '#d2ad52', // amber-400  — brass gold (primary / legacy default)
@@ -52,6 +52,50 @@ export const SERIES_COLORS = [
   '#dd7158', // crimson-400 — clay
   '#99dfb0', // ledger-300 — pale mint
 ] as const;
+
+/**
+ * CSS custom properties backing each series slot. Every theme redefines these
+ * same names (e.g. --color-amber-400 is brass in Study, electric blue in the
+ * modern themes), so reading them at render time keeps the chart in-theme.
+ */
+const SERIES_VARS = [
+  '--color-amber-400',
+  '--color-ledger-400',
+  '--color-azure-400',
+  '--color-amber-300',
+  '--color-crimson-400',
+  '--color-ledger-300',
+] as const;
+
+/** Read a CSS custom property off <html>, falling back when there's no DOM. */
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+interface ChartTokens {
+  series: string[];
+  axisStroke: string;
+  gridStroke: string;
+  tooltipBg: string;
+  tooltipBorder: string;
+  tooltipText: string;
+  mutedText: string;
+}
+
+/** Resolve all chart colours from the active theme's CSS variables. */
+function readChartTokens(): ChartTokens {
+  return {
+    series: SERIES_VARS.map((v, i) => cssVar(v, SERIES_COLORS[i])),
+    axisStroke: cssVar('--color-fg-400', '#7c8a73'),
+    gridStroke: cssVar('--color-line', '#23362a'),
+    tooltipBg: cssVar('--color-ink-850', '#0f1611'),
+    tooltipBorder: cssVar('--color-line-strong', '#32483a'),
+    tooltipText: cssVar('--color-fg-100', '#e9e6d7'),
+    mutedText: cssVar('--color-fg-300', '#8e9a83'),
+  };
+}
 
 const VALID_TYPES: ReadonlySet<string> = new Set(['bar', 'line', 'area']);
 
@@ -103,52 +147,57 @@ export function resolveSeries(spec: ChartSpec | null | undefined): ResolvedSerie
   return { type, series: seen };
 }
 
-const AXIS_PROPS = {
-  stroke: '#66745f',
-  fontSize: 11,
-  fontFamily: 'Spline Sans Mono, monospace',
-  tickLine: false,
-  axisLine: false,
-} as const;
-
-const TOOLTIP_PROPS = {
-  contentStyle: {
-    backgroundColor: '#0f1611',
-    border: '1px solid #32483a',
-    borderRadius: '6px',
-    fontFamily: 'Spline Sans Mono, monospace',
-    fontSize: '12px',
-    color: '#e9e6d7',
-  },
-  labelStyle: { color: '#8e9a83' },
-  itemStyle: { color: '#e6cd83' },
-} as const;
-
-const LEGEND_PROPS = {
-  wrapperStyle: {
-    fontFamily: 'Spline Sans Mono, monospace',
-    fontSize: '11px',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.12em',
-    color: '#8e9a83',
-    paddingTop: '6px',
-  },
-  iconType: 'square' as const,
-  iconSize: 9,
-};
-
 const FinancialChart: React.FC<FinancialChartProps> = React.memo(({ title, data, type, series, color }) => {
+  const { theme } = useTheme();
   const rows: ChartRow[] = Array.isArray(data) ? data : [];
   const { type: chartType, series: keys } = resolveSeries({ type, data: rows, series });
 
+  // Re-read theme tokens whenever the active theme changes so the chart colours
+  // track Study / Modern-Dark / Modern-Light instead of staying brass-on-green.
+  const tk = useMemo(readChartTokens, [theme]);
+
   const hasChart = rows.length > 0 && keys.length > 0;
   const showLegend = keys.length > 1;
+
+  const axisProps = {
+    stroke: tk.axisStroke,
+    fontSize: 11,
+    fontFamily: 'Spline Sans Mono, monospace',
+    tickLine: false,
+    axisLine: false,
+  } as const;
+
+  const tooltipProps = {
+    contentStyle: {
+      backgroundColor: tk.tooltipBg,
+      border: `1px solid ${tk.tooltipBorder}`,
+      borderRadius: '6px',
+      fontFamily: 'Spline Sans Mono, monospace',
+      fontSize: '12px',
+      color: tk.tooltipText,
+    },
+    labelStyle: { color: tk.mutedText },
+    itemStyle: { color: tk.tooltipText },
+  } as const;
+
+  const legendProps = {
+    wrapperStyle: {
+      fontFamily: 'Spline Sans Mono, monospace',
+      fontSize: '11px',
+      textTransform: 'uppercase' as const,
+      letterSpacing: '0.12em',
+      color: tk.mutedText,
+      paddingTop: '6px',
+    },
+    iconType: 'square' as const,
+    iconSize: 9,
+  };
 
   // Honour the legacy single-series colour override only when there's one
   // series; otherwise series cycle through the in-theme palette.
   const colorFor = (index: number): string => {
     if (keys.length === 1 && color) return color;
-    return SERIES_COLORS[index % SERIES_COLORS.length];
+    return tk.series[index % tk.series.length];
   };
 
   return (
@@ -163,11 +212,11 @@ const FinancialChart: React.FC<FinancialChartProps> = React.memo(({ title, data,
           <ResponsiveContainer width="100%" height="100%">
             {chartType === 'line' ? (
               <LineChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="#23362a" vertical={false} />
-                <XAxis dataKey="name" {...AXIS_PROPS} />
-                <YAxis {...AXIS_PROPS} tickFormatter={(value) => `$${value}B`} />
-                <Tooltip cursor={{ stroke: 'rgba(210,173,82,0.25)' }} {...TOOLTIP_PROPS} />
-                {showLegend && <Legend {...LEGEND_PROPS} />}
+                <CartesianGrid strokeDasharray="2 4" stroke={tk.gridStroke} vertical={false} />
+                <XAxis dataKey="name" {...axisProps} />
+                <YAxis {...axisProps} tickFormatter={(value) => `$${value}B`} />
+                <Tooltip cursor={{ stroke: 'rgba(127,127,127,0.30)' }} {...tooltipProps} />
+                {showLegend && <Legend {...legendProps} />}
                 {keys.map((key, i) => (
                   <Line
                     key={key}
@@ -190,11 +239,11 @@ const FinancialChart: React.FC<FinancialChartProps> = React.memo(({ title, data,
                     </linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid strokeDasharray="2 4" stroke="#23362a" vertical={false} />
-                <XAxis dataKey="name" {...AXIS_PROPS} />
-                <YAxis {...AXIS_PROPS} tickFormatter={(value) => `$${value}B`} />
-                <Tooltip cursor={{ stroke: 'rgba(210,173,82,0.25)' }} {...TOOLTIP_PROPS} />
-                {showLegend && <Legend {...LEGEND_PROPS} />}
+                <CartesianGrid strokeDasharray="2 4" stroke={tk.gridStroke} vertical={false} />
+                <XAxis dataKey="name" {...axisProps} />
+                <YAxis {...axisProps} tickFormatter={(value) => `$${value}B`} />
+                <Tooltip cursor={{ stroke: 'rgba(127,127,127,0.30)' }} {...tooltipProps} />
+                {showLegend && <Legend {...legendProps} />}
                 {keys.map((key, i) => (
                   <Area
                     key={key}
@@ -208,11 +257,11 @@ const FinancialChart: React.FC<FinancialChartProps> = React.memo(({ title, data,
               </AreaChart>
             ) : (
               <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="#23362a" vertical={false} />
-                <XAxis dataKey="name" {...AXIS_PROPS} />
-                <YAxis {...AXIS_PROPS} tickFormatter={(value) => `$${value}B`} />
-                <Tooltip cursor={{ fill: 'rgba(210,173,82,0.07)' }} {...TOOLTIP_PROPS} />
-                {showLegend && <Legend {...LEGEND_PROPS} />}
+                <CartesianGrid strokeDasharray="2 4" stroke={tk.gridStroke} vertical={false} />
+                <XAxis dataKey="name" {...axisProps} />
+                <YAxis {...axisProps} tickFormatter={(value) => `$${value}B`} />
+                <Tooltip cursor={{ fill: 'rgba(127,127,127,0.10)' }} {...tooltipProps} />
+                {showLegend && <Legend {...legendProps} />}
                 {keys.map((key, i) => (
                   <Bar
                     key={key}
