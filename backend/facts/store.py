@@ -181,6 +181,18 @@ def get_financials(
     return {"ticker": ticker, "metrics": out}
 
 
+def latest_filing_date(ticker: str) -> Optional[str]:
+    """The newest filing_date we've ingested facts from for ``ticker`` (ISO), or
+    None. Used by the watchlist to flag when EDGAR has a newer filing."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT MAX(filing_date) AS d FROM financial_facts WHERE ticker = ? "
+            "AND filing_date IS NOT NULL AND filing_date != ''",
+            ((ticker or "").strip().upper(),),
+        ).fetchone()
+    return row["d"] if row and row["d"] else None
+
+
 def list_covered_tickers() -> list[str]:
     with _connect() as conn:
         return [r["ticker"] for r in conn.execute(

@@ -42,6 +42,7 @@ from backend.retrieval.retriever import retrieve
 from backend.facts.store import get_financials as _get_financials
 from backend.valuation import compute_metrics, compute_valuation, get_price_snapshot
 from backend.valuation.summary import format_fundamentals, format_valuation
+from backend import watchlist as wl
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -438,6 +439,42 @@ async def smart_money_refresh():
     except Exception:
         logger.exception("Smart-money refresh failed")
         raise HTTPException(status_code=502, detail="Smart-money refresh failed")
+
+
+@app.get("/watchlist")
+async def watchlist_list():
+    """The saved watchlist tickers."""
+    return {"tickers": await asyncio.to_thread(wl.list_tickers)}
+
+
+@app.post("/watchlist/{ticker}", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
+async def watchlist_add(ticker: str):
+    """Add a ticker to the watchlist (idempotent)."""
+    ok = await asyncio.to_thread(wl.add_ticker, ticker)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Invalid ticker")
+    return {"tickers": await asyncio.to_thread(wl.list_tickers)}
+
+
+@app.delete("/watchlist/{ticker}", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
+async def watchlist_remove(ticker: str):
+    """Remove a ticker from the watchlist."""
+    await asyncio.to_thread(wl.remove_ticker, ticker)
+    return {"tickers": await asyncio.to_thread(wl.list_tickers)}
+
+
+@app.get("/watchlist/dashboard", dependencies=[Depends(enforce_rate_limit)])
+async def watchlist_dashboard():
+    """On-demand dashboard: valuation + signals + flags + 'what changed' per
+    watched ticker. Computes fresh (best-effort enrichment) and saves a snapshot
+    so the next view can diff. Deterministic core; network enrichment is
+    best-effort."""
+    try:
+        rows = await asyncio.to_thread(wl.build_dashboard)
+        return {"rows": rows}
+    except Exception:
+        logger.exception("Failed to build watchlist dashboard")
+        raise HTTPException(status_code=500, detail="Failed to build watchlist dashboard")
 
 
 @app.post("/chat", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
