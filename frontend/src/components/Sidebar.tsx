@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, X } from 'lucide-react';
-import { listFilings, FilingInfo } from '../api';
+import { listFilings, getWatchlist, FilingInfo } from '../api';
 import { cn } from './ui';
 import InsiderPanel from './InsiderPanel';
 import SmartMoneyPanel from './SmartMoneyPanel';
@@ -33,6 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [filings, setFilings] = useState<FilingInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [watchCount, setWatchCount] = useState<number | null>(null);
 
   const fetchFilings = async () => {
     try {
@@ -43,6 +44,12 @@ const Sidebar: React.FC<SidebarProps> = ({
     } finally {
       setLoading(false);
     }
+    try {
+      const wl = await getWatchlist();
+      setWatchCount(wl.tickers.length);
+    } catch {
+      // watchlist count is non-essential; ignore failures
+    }
   };
 
   useEffect(() => {
@@ -52,6 +59,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     const interval = setInterval(fetchFilings, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Refresh the watchlist count when returning to the watchlist view (it may
+  // have changed via add/remove there).
+  useEffect(() => {
+    if (view !== 'watchlist') return;
+    getWatchlist().then((wl) => setWatchCount(wl.tickers.length)).catch(() => {});
+  }, [view]);
 
   const totalChunks = filings.reduce((n, f) => n + f.chunks, 0);
 
@@ -138,7 +152,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                 : 'text-fg-400 hover:bg-white/5 hover:text-fg-200',
             )}
           >
-            {v === 'chat' ? 'Analyst' : 'Watchlist'}
+            {v === 'chat' ? (
+              'Analyst'
+            ) : (
+              <>
+                Watchlist
+                {watchCount ? (
+                  <span className="ml-1.5 rounded bg-white/10 px-1 text-[9px] tabular-nums">{watchCount}</span>
+                ) : null}
+              </>
+            )}
           </button>
         ))}
       </div>
