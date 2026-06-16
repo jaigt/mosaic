@@ -59,11 +59,16 @@ def build_row(
     ticker = ticker.upper()
     covered = "revenue" in (fin.get("metrics") or {})
     if not covered:
-        row = {"ticker": ticker, "covered": False, "flags": [
-            {"type": "coverage", "direction": "info",
-             "label": "Limited structured coverage (bank/insurer or non-standard filer)"}],
-            "key_metrics": {}, "valuation": {}, "changed": [], "new_filing": None,
-            "holdings": {}}
+        # Distinguish "we have facts but no income-statement spine" (a bank /
+        # insurer / non-standard filer) from "no facts at all" (couldn't extract).
+        if fin.get("metrics"):
+            label = "Limited structured coverage — bank/insurer or non-standard filer (use the Analyst for its figures)"
+        else:
+            label = "Couldn't extract financials (no XBRL, or the fetch failed) — try the Analyst"
+        row = {"ticker": ticker, "covered": False,
+               "flags": [{"type": "coverage", "direction": "info", "label": label}],
+               "key_metrics": {}, "valuation": {}, "changed": [], "new_filing": None,
+               "holdings": {}}
         return row, {"covered": False}
 
     metrics = compute_metrics(fin)
@@ -178,9 +183,15 @@ def build_dashboard(
 
     def _one(ticker: str) -> dict:
         from backend.facts.store import get_financials, latest_filing_date
+        from backend.facts.ingest import ensure_facts
         from backend.valuation import get_price_snapshot
 
         fin = get_financials(ticker)
+        if not fin.get("metrics"):
+            # First time we've seen this ticker — populate its fact base from XBRL
+            # (deterministic, no LLM) so the watchlist self-heals on add.
+            _best_effort(lambda: ensure_facts(ticker))
+            fin = get_financials(ticker)
         price_snapshot = _best_effort(lambda: get_price_snapshot(ticker))
         insider = _best_effort(lambda: _insider_summary(ticker))
         smart = _best_effort(lambda: _smart_money_summary(ticker))

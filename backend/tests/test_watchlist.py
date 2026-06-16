@@ -70,12 +70,28 @@ def test_build_row_covered_has_flags_and_metrics():
     assert snap["covered"] is True and snap["pe"] is not None
 
 
-def test_build_row_uncovered_filer():
-    fin = _fin({"total_assets": {"2025-12-31": 100.0}})  # no revenue → bank-like
-    row, snap = build_row("JPM", fin)
-    assert row["covered"] is False
-    assert row["flags"][0]["type"] == "coverage"
-    assert snap == {"covered": False}
+def test_build_row_uncovered_message_distinguishes_bank_vs_unextracted():
+    # Has facts but no revenue spine → bank/insurer message.
+    bank = _fin({"total_assets": {"2025-12-31": 100.0}})
+    r1, snap1 = build_row("JPM", bank)
+    assert r1["covered"] is False and r1["flags"][0]["type"] == "coverage"
+    assert "bank/insurer" in r1["flags"][0]["label"]
+    assert snap1 == {"covered": False}
+    # No facts at all → "couldn't extract", NOT a wrong bank label.
+    r2, _ = build_row("ZZZ", {"ticker": "ZZZ", "metrics": {}})
+    assert "Couldn't extract" in r2["flags"][0]["label"]
+
+
+def test_ensure_facts_skips_when_already_present(monkeypatch):
+    """ensure_facts must NOT hit the network when facts already exist."""
+    from backend.facts import ingest as fi, store as fs
+    monkeypatch.setattr(fs, "get_financials",
+                        lambda t, **k: {"ticker": t, "metrics": {"revenue": [{"value": 1.0}]}})
+    # If it tried to fetch, resolve_filing would run; force it to blow up to prove
+    # the skip path returns before any network call.
+    import backend.ingestion.edgar_fetcher as ef
+    monkeypatch.setattr(ef, "resolve_filing", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network!")))
+    assert fi.ensure_facts("AAPL") == 0
 
 
 def test_build_row_new_filing_flag():
