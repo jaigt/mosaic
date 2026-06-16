@@ -65,6 +65,11 @@ def _fcf(p: dict[str, float]) -> Optional[float]:
 def metrics_for_period(p: dict[str, float]) -> dict[str, Optional[float]]:
     """Derived metrics for one period's ``{canonical_key: value}``."""
     rev = p.get("revenue")
+    # Derive gross profit when a filer doesn't tag it directly (e.g. GOOGL):
+    # revenue - cost_of_revenue. Keeps gross margin comparable across companies.
+    gross_profit = p.get("gross_profit")
+    if gross_profit is None and rev is not None and p.get("cost_of_revenue") is not None:
+        gross_profit = rev - p["cost_of_revenue"]
     fcf = _fcf(p)
     ebitda = _ebitda(p)
     nd = _net_debt(p)
@@ -75,7 +80,7 @@ def metrics_for_period(p: dict[str, float]) -> dict[str, Optional[float]]:
     if p.get("total_equity") is not None and nd is not None:
         invested_capital = p["total_equity"] + max(nd, 0.0)
     return {
-        "gross_margin": _safe_div(p.get("gross_profit"), rev),
+        "gross_margin": _safe_div(gross_profit, rev),
         "operating_margin": _safe_div(p.get("operating_income"), rev),
         "net_margin": _safe_div(p.get("net_income"), rev),
         "fcf": fcf,

@@ -160,6 +160,12 @@ viable** — thousands of automated checks are pure deterministic computation.
   segment definitions that vary by company. Mitigate with the validation
   identities, confidence scoring, provenance, and a concept map that grows over
   time. Budget real effort here; it's where comparability is won or lost.
+  *Status (cross-company check, 2026-06-16):* MSFT/GOOGL/NVDA/KO extract cleanly
+  with passing identities (gross profit is derived when untagged, e.g. GOOGL).
+  **Banks/insurers (e.g. JPM) are NOT covered** — no `revenue`/`operating_income`
+  concepts; the tools detect the missing income spine and route those filers to
+  prose search. A financials-sector taxonomy (net interest income, etc.) is
+  future work.
 - **Price/market data is not in EDGAR.** Multiples and any market-relative
   valuation need a price source (e.g. `yfinance` free tier, or a paid feed).
   Pure-fundamental metrics don't; gate the price-dependent ones on that source.

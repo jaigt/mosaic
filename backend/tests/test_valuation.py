@@ -72,6 +72,13 @@ def test_trends():
     assert t["revenue_cagr"] == pytest.approx((400 / 300) ** (1 / 2) - 1)
 
 
+def test_gross_profit_derived_when_untagged():
+    """A filer that doesn't tag gross_profit (e.g. GOOGL) still gets a gross
+    margin from revenue - cost_of_revenue."""
+    p = metrics_for_period({"revenue": 100.0, "cost_of_revenue": 55.0})  # no gross_profit
+    assert p["gross_margin"] == pytest.approx(0.45)
+
+
 def test_missing_inputs_yield_none_not_zero():
     p = metrics_for_period({"operating_income": 50.0})  # no revenue, no D&A inputs
     assert p["gross_margin"] is None
