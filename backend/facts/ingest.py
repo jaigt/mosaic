@@ -50,7 +50,13 @@ def ensure_facts(ticker: str, document_type: str = "10-K", *, force: bool = Fals
         if not facts:
             return 0
         upsert_filing(ref)
-        return upsert_facts(facts, filing_date=filing_date)
+        n = upsert_facts(facts, filing_date=filing_date)
+        try:  # segments are a bonus — never let them break fact ingestion
+            from backend.facts.segments import extract_segments, upsert_segments
+            upsert_segments(extract_segments(xbrl_data, ref))
+        except Exception as e:  # noqa: BLE001
+            logger.info("segment extraction skipped for %s: %s", ticker, e)
+        return n
     except Exception as e:  # noqa: BLE001 — facts-only ingest is best-effort
         logger.info("ensure_facts(%s) skipped: %s", ticker, e)
         return 0

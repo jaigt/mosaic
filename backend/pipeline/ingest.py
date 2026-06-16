@@ -454,7 +454,13 @@ def _extract_and_store_facts(xbrl_data, filing, meta: dict, ticker: str, documen
         if not facts:
             return 0
         facts_store.upsert_filing(ref)
-        return facts_store.upsert_facts(facts, filing_date=filing_date)
+        n = facts_store.upsert_facts(facts, filing_date=filing_date)
+        try:  # segment breakdowns are a bonus — never break the ingest
+            from backend.facts.segments import extract_segments, upsert_segments
+            upsert_segments(extract_segments(xbrl_data, ref))
+        except Exception as e:  # noqa: BLE001
+            logger.info("segment extraction skipped for %s: %s", ticker, e)
+        return n
     except Exception as e:  # noqa: BLE001 — facts are best-effort
         logger.warning("Fact extraction skipped for %s %s: %s", ticker, document_type, e)
         return 0

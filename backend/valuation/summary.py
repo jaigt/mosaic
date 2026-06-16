@@ -57,6 +57,21 @@ def format_fundamentals(fin: dict, metrics: dict) -> str:
     return "\n".join(lines)
 
 
+def format_segments(seg: dict, max_members: int = 6) -> str:
+    """Revenue broken down by each reported axis (geography, product, …). PURE.
+    Returns '' when there are no segment facts."""
+    axes = seg.get("axes") or {}
+    if not axes:
+        return ""
+    lines = [f"Revenue by segment ({seg.get('period_end')}; as reported, may include subtotals):"]
+    for axis, members in axes.items():
+        top = members[:max_members]
+        rendered = ", ".join(f"{m['member']} {_money(m['value'])}" for m in top)
+        more = f" (+{len(members) - len(top)} more)" if len(members) > len(top) else ""
+        lines.append(f"  {axis}: {rendered}{more}")
+    return "\n".join(lines)
+
+
 def format_valuation(val: dict) -> str:
     """Multiples + DCF summary, with assumptions stated. PURE."""
     ticker = val.get("ticker") or "?"

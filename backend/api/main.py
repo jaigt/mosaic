@@ -70,7 +70,11 @@ def _financials_tool(ticker: str) -> str:
                 "first, then ask again.")
     if not _has_core_financials(fin):
         return _LOW_COVERAGE_MSG.format(t=ticker)
-    return format_fundamentals(fin, compute_metrics(fin))
+    text = format_fundamentals(fin, compute_metrics(fin))
+    from backend.facts.segments import get_segments
+    from backend.valuation.summary import format_segments
+    seg = format_segments(get_segments(ticker))
+    return f"{text}\n{seg}" if seg else text
 
 
 def _valuation_tool(ticker: str) -> str:
