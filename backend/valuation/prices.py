@@ -38,6 +38,31 @@ def get_price_snapshot(ticker: str) -> Optional[dict]:
         return None
 
 
+def get_price_history(ticker: str, points: int = 30) -> list[float]:
+    """Return up to ``points`` recent daily closes (oldest→newest) for a tiny
+    sparkline, or ``[]``. Best-effort: any failure returns ``[]``."""
+    ticker = (ticker or "").strip().upper()
+    if not ticker:
+        return []
+    try:
+        import yfinance as yf
+
+        hist = yf.Ticker(ticker).history(period="3mo", interval="1d")
+        closes = [float(c) for c in hist["Close"].tolist() if c == c]  # drop NaN
+        if not closes:
+            return []
+        if len(closes) <= points:
+            return closes
+        # Evenly downsample to ~points, keeping the most recent.
+        step = len(closes) / points
+        sampled = [closes[min(int(i * step), len(closes) - 1)] for i in range(points)]
+        sampled[-1] = closes[-1]
+        return sampled
+    except Exception as e:  # noqa: BLE001 — sparkline is optional
+        logger.info("Price history for %s unavailable: %s", ticker, e)
+        return []
+
+
 def _first(obj, *keys):
     """Read the first present attribute/key (yfinance fast_info is dict-like)."""
     for k in keys:

@@ -54,6 +54,7 @@ def build_row(
     smart_money_summary: Optional[str] = None,
     ingested_filing_date: Optional[str] = None,
     edgar_latest_filing_date: Optional[str] = None,
+    price_history: Optional[list] = None,
 ) -> tuple[dict, dict]:
     """Build one dashboard row + the snapshot to persist. PURE."""
     ticker = ticker.upper()
@@ -137,6 +138,7 @@ def build_row(
                       "upside_vs_price": upside},
         "key_metrics": key_metrics, "flags": flags, "changed": changed,
         "new_filing": new_filing, "holdings": holdings,
+        "spark": price_history or [],
     }
     return row, snap
 
@@ -184,7 +186,7 @@ def build_dashboard(
     def _one(ticker: str) -> dict:
         from backend.facts.store import get_financials, latest_filing_date
         from backend.facts.ingest import ensure_facts
-        from backend.valuation import get_price_snapshot
+        from backend.valuation import get_price_snapshot, get_price_history
 
         fin = get_financials(ticker)
         if not fin.get("metrics"):
@@ -193,6 +195,7 @@ def build_dashboard(
             _best_effort(lambda: ensure_facts(ticker))
             fin = get_financials(ticker)
         price_snapshot = _best_effort(lambda: get_price_snapshot(ticker))
+        price_history = _best_effort(lambda: get_price_history(ticker)) or []
         insider = _best_effort(lambda: _insider_summary(ticker))
         smart = _best_effort(lambda: _smart_money_summary(ticker))
         edgar_latest = _best_effort(lambda: _edgar_latest_filing_date(ticker))
@@ -202,6 +205,7 @@ def build_dashboard(
             ticker, fin, price_snapshot=price_snapshot, prev_snapshot=prev,
             insider_summary=insider, smart_money_summary=smart,
             ingested_filing_date=ingested, edgar_latest_filing_date=edgar_latest,
+            price_history=price_history,
         )
         if save:
             wl_store.save_snapshot(ticker, snap)

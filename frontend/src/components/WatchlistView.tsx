@@ -36,6 +36,31 @@ const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) =>
   </div>
 );
 
+const Sparkline: React.FC<{ data: number[] }> = ({ data }) => {
+  if (!data || data.length < 2) return null;
+  const w = 64;
+  const h = 18;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data
+    .map((v, i) => `${((i / (data.length - 1)) * w).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`)
+    .join(' ');
+  const up = data[data.length - 1] >= data[0];
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" className="shrink-0">
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={up ? 'var(--color-ledger-400)' : 'var(--color-crimson-400)'}
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+};
+
 const RowCard: React.FC<{ row: WatchlistRow; onRemove: (t: string) => void; busy: boolean }> = ({
   row,
   onRemove,
@@ -48,8 +73,11 @@ const RowCard: React.FC<{ row: WatchlistRow; onRemove: (t: string) => void; busy
       <div className="mb-3 flex items-center gap-3">
         <span className="font-display text-lg text-fg-100">{row.ticker}</span>
         {row.verdict && <Badge tone={verdictTone(row.verdict)}>{row.verdict}</Badge>}
-        <span className="ml-auto font-mono text-sm text-fg-200">
-          {row.price != null ? `$${row.price.toFixed(2)}` : ''}
+        <span className="ml-auto flex items-center gap-2.5">
+          {row.spark && row.spark.length > 1 && <Sparkline data={row.spark} />}
+          <span className="font-mono text-sm text-fg-200">
+            {row.price != null ? `$${row.price.toFixed(2)}` : ''}
+          </span>
         </span>
         <button
           type="button"

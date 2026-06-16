@@ -214,6 +214,8 @@ export interface WatchlistRow {
   changed: string[];
   new_filing?: { available: boolean; edgar_date?: string; ingested_date?: string } | null;
   holdings?: { insider?: string; smart_money?: string };
+  /** Recent daily closes (oldest→newest) for a sparkline; may be empty. */
+  spark?: number[];
 }
 
 export async function getWatchlist(): Promise<{ tickers: string[] }> {
