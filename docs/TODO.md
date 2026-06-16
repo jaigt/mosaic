@@ -109,10 +109,12 @@ SHIPPED (2026-06-16) — the spine of the *valuation* product:
 
 ## P3 — Future features
 
-- [ ] **Watchlist / portfolio view** — a saved set of tickers with a cross-ticker
-      dashboard. Comparison charts exist; a saved watchlist + recurring-use
-      surface does not. Becomes far more powerful on top of the fact base +
-      valuation engine above (alerts on metric/valuation changes, not just events).
+- [x] **Watchlist v1 (2026-06-16)** — saved tickers + an **on-demand dashboard**
+      (`backend/watchlist/` + `WatchlistView`): per name, valuation verdict +
+      flags (valuation / fundamental signals / new-filing / insider & smart-money)
+      + "what changed since last view" (snapshot diff). No scheduler. Live-verified
+      (AAPL/MSFT/GOOGL render with flags). NEXT: background scheduler + persistent
+      push alerts; a compact per-ticker badge in the sidebar; price-history/sparkline.
 - [ ] **Hosting / deploy** (for showing others) — local oMLX can't be demoed
       remotely. When public: static FE on Cloudflare Pages + FastAPI/LanceDB on a
       small box (Railway/Render/Fly) + a cloud LLM key. See
