@@ -9,10 +9,13 @@ from backend.valuation.engine import (
     compute_valuation,
 )
 from backend.valuation.prices import get_price_snapshot
+from backend.valuation.thesis import derive_signals, format_thesis
 
 __all__ = [
     "compute_metrics",
     "compute_valuation",
     "DCFAssumptions",
     "get_price_snapshot",
+    "derive_signals",
+    "format_thesis",
 ]

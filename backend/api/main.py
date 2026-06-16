@@ -66,6 +66,21 @@ def _valuation_tool(ticker: str) -> str:
                             shares_outstanding=snap.get("shares_outstanding"))
     return format_valuation(val)
 
+
+def _thesis_tool(ticker: str) -> str:
+    """Agent tool: a deterministic bull/bear thesis scaffold (signals derived from
+    the fact base + valuation) for the model to narrate + add qualitative color."""
+    from backend.valuation import derive_signals, format_thesis
+    fin = _get_financials(ticker)
+    if not fin.get("metrics"):
+        return f"No structured financials for {ticker} yet — ingest its 10-K first."
+    metrics = compute_metrics(fin)
+    snap = get_price_snapshot(ticker) or {}
+    val = compute_valuation(fin, price=snap.get("price"),
+                            shares_outstanding=snap.get("shares_outstanding"))
+    signals = derive_signals(metrics, val)
+    return format_thesis(ticker, metrics, val, signals)
+
 # Max tokens buffered between the (paid) producer thread and the SSE consumer.
 # Keeps memory bounded and lets the producer block (and thus notice a stop
 # signal) instead of racing ahead of a slow/disconnected client.
@@ -538,6 +553,7 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                 funds_holding_fn=funds_holding_lookup,
                 financials_fn=_financials_tool,
                 valuation_fn=_valuation_tool,
+                thesis_fn=_thesis_tool,
             )
             holder: dict = {}
             async for ev in _react_gather(

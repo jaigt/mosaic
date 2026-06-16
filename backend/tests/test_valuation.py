@@ -119,6 +119,21 @@ def test_summary_formatters():
     assert "not a recommendation" in val  # guardrail line present
 
 
+def test_derive_signals_and_thesis_scaffold():
+    from backend.valuation import derive_signals, format_thesis
+    m = compute_metrics(SAMPLE)
+    v = compute_valuation(SAMPLE, price=20.0)
+    sigs = derive_signals(m, v)
+    dirs = {(s.dimension, s.direction) for s in sigs}
+    assert ("profitability", "bull") in dirs   # net margin 25%
+    assert ("cash_flow", "bull") in dirs        # FCF margin 25%
+    assert ("balance_sheet", "bull") in dirs    # net debt/EBITDA ~0.36x
+    assert ("growth", "bull") in dirs           # revenue +14% YoY
+    txt = format_thesis("TEST", m, v, sigs)
+    assert "BULL:" in txt and "BEAR:" in txt and "VALUATION:" in txt
+    assert "not investment advice" in txt
+
+
 def test_custom_assumptions_override():
     v = compute_valuation(SAMPLE, price=20.0,
                           assumptions=DCFAssumptions(years=10, growth=0.05,

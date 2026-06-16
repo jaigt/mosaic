@@ -243,6 +243,20 @@ def test_value_company_tool_adds_citable_source():
     assert result.sources[0].chunk.document_type == "valuation"
 
 
+def test_build_thesis_tool_adds_citable_source():
+    gen = _scripted_generate(
+        {"tool": "build_thesis", "input": {"ticker": "AAPL"}},
+        {"tool": "answer", "input": {}},
+    )
+    events = []
+    agent = _agent(gen)
+    agent._thesis_fn = lambda t: f"{t} — BULL: strong FCF; BEAR: expensive on DCF"
+    result = agent.run("What's the investment thesis for AAPL?", [], {}, events.append)
+    assert any(e["kind"] == "thesis" for e in events)
+    assert [s.chunk.chunk_id for s in result.sources] == ["THESIS_AAPL"]
+    assert result.sources[0].chunk.document_type == "thesis"
+
+
 def test_fund_holdings_tool_adds_source():
     from backend.holdings.models import FundHoldings, Holding
     fh = FundHoldings(fund="Berkshire", report_period="2026-03-31", total_value=1000,

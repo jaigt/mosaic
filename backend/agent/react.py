@@ -102,6 +102,14 @@ _TOOL_SPECS = [
             "required": ["ticker"],
         },
     ),
+    ToolSpec(
+        name="build_thesis",
+        description="A deterministic bull/bear investment-thesis scaffold for a ticker (labeled signals from the fact base + valuation, plus 'what would change the view'). Use for 'investment thesis', 'bull and bear case', 'is this a good investment', 'should I own X'. Pair with a search for qualitative context (moat, risks).",
+        parameters={
+            "properties": {"ticker": {"type": "string", "description": "company ticker"}},
+            "required": ["ticker"],
+        },
+    ),
 ]
 
 _NATIVE_SYSTEM_PROMPT = """\
@@ -158,6 +166,10 @@ Available tools:
     numbers are exact and traceable. input: {"ticker": str}
 - "value_company": multiples (P/E, EV/EBITDA, P/FCF, FCF yield) + a transparent
     DCF intrinsic-value range. Use for valuation / "is it cheap or expensive".
+    input: {"ticker": str}
+- "build_thesis": a deterministic bull/bear thesis scaffold (signals + "what
+    would change the view") for "investment thesis" / "bull and bear case" /
+    "should I own X". Pair with a search for qualitative context (moat, risks).
     input: {"ticker": str}
 - "answer": stop gathering — you have enough evidence to answer.
     input: {}
@@ -279,6 +291,7 @@ class ReactAgent:
         funds_holding_fn: Optional[Callable] = None,
         financials_fn: Optional[Callable] = None,
         valuation_fn: Optional[Callable] = None,
+        thesis_fn: Optional[Callable] = None,
     ):
         self._generate = generate_fn
         self._retrieve = retrieve_fn
@@ -289,6 +302,7 @@ class ReactAgent:
         self._funds_holding_fn = funds_holding_fn
         self._financials_fn = financials_fn
         self._valuation_fn = valuation_fn
+        self._thesis_fn = thesis_fn
         self._model = model
         self._max_steps = max_steps
         # Native function-calling mode (more reliable than parsing JSON from
@@ -427,6 +441,8 @@ class ReactAgent:
             return self._do_get_financials(action.input, filters, on_event)
         if action.tool == "value_company":
             return self._do_value_company(action.input, filters, on_event)
+        if action.tool == "build_thesis":
+            return self._do_build_thesis(action.input, filters, on_event)
         # Unknown tool — nudge the model to answer.
         on_event({"kind": "note", "label": f"Unknown tool '{action.tool}', wrapping up."})
         return f"Unknown tool '{action.tool}'. Call 'answer' if you have enough evidence."
@@ -547,6 +563,22 @@ class ReactAgent:
             return f"Valuation for {ticker} failed: {e}"
         self._last_retrieved = [_synthetic_source(
             f"VALUATION_{ticker}", ticker, "Valuation (metrics + DCF)", text, doc_type="valuation",
+        )]
+        return text
+
+    def _do_build_thesis(self, inp: dict, filters: dict, on_event) -> str:
+        if self._thesis_fn is None:
+            return "Thesis builder is unavailable."
+        ticker = (inp.get("ticker") or filters.get("ticker") or "").strip().upper()
+        if not ticker:
+            return "build_thesis needs a ticker."
+        on_event({"kind": "thesis", "label": f"Building the bull/bear thesis for {ticker}…"})
+        try:
+            text = self._thesis_fn(ticker)
+        except Exception as e:  # noqa: BLE001
+            return f"Thesis for {ticker} failed: {e}"
+        self._last_retrieved = [_synthetic_source(
+            f"THESIS_{ticker}", ticker, "Investment Thesis (signals)", text, doc_type="thesis",
         )]
         return text
 
