@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     mlx_api_key: str = ""
     sec_user_agent: str
     lancedb_path: str = "./data/lancedb"
+    # SQLite store for the structured financial fact base (local, gitignored).
+    facts_db_path: str = "./data/facts.db"
     # Stable GA models (verified live 2026-06-15). NOT *-preview: this project
     # was burned before by pinning retired preview names (see docs round 3).
     fast_model: str = "gemini-2.5-flash-lite"
