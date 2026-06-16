@@ -88,13 +88,20 @@ key and hits no quota. Cloud keys remain optional fallbacks.
 
 ## Strategic direction — structured fact base + valuation engine
 
-- [ ] **The next major build:** shift from "re-read filings every query" to a
-      **structured financial fact base** (extract once at ingest, mostly from
-      XBRL) + a deterministic **valuation engine**, with cheap retrieval at query
-      time and the watchlist/alerts on top. This is the differentiation (a
-      *valuation* product, not a filing chatbot) and the cost win. Full spec:
-      [`VALUATION_ENGINE_DESIGN.md`](./VALUATION_ENGINE_DESIGN.md). Phase 1 =
-      fact base + XBRL extractor + `get_financials` tool.
+Spec: [`VALUATION_ENGINE_DESIGN.md`](./VALUATION_ENGINE_DESIGN.md). Phases 1–3
+SHIPPED (2026-06-16) — the spine of the *valuation* product:
+- [x] **Phase 1 — fact base** (`backend/facts/`): XBRL extractor + canonical
+      taxonomy + validation + SQLite store + `get_financials`. Populated on ingest.
+- [x] **Phase 2 — valuation engine** (`backend/valuation/`): margins/FCF/returns/
+      leverage/growth + multiples (yfinance price) + transparent DCF scaffold.
+- [x] **Phase 3 — agent tools** `get_financials` + `value_company`; both prompts
+      steer toward structured facts over prose. Live-verified on oMLX: AAPL
+      margins/FCF + "cheap or expensive" (DCF) answered from the fact base,
+      `supported` verification.
+- [ ] **Phase 4 — thesis synthesis:** bull/bear case + "what would change my
+      mind" over the structured facts + targeted narrative (the judgment layer).
+- [ ] **Hardening:** LLM-assisted gap-fill for line items XBRL misses (segments,
+      odd tags); broaden the taxonomy across more filers; segment-level facts.
 
 ## P3 — Future features
 
