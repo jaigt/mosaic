@@ -95,7 +95,7 @@ def test_progress_callback_stages_in_order(monkeypatch):
 
     stages = [e["stage"] for e in events]
     assert stages == [
-        "resolving", "fetching", "parsing",
+        "resolving", "fetching", "parsing", "extracting_financials",
         "summarizing_tables", "embedding", "storing", "done",
     ]
     assert events[-1]["chunks"] == written == 1

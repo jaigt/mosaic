@@ -397,26 +397,67 @@ def _path_a_html(filing, ticker: str, document_type: str, year: Optional[int]) -
     return html_doc.elements
 
 
-def _path_b_xbrl(filing, ticker: str, document_type: str, year: Optional[int]) -> list[ParsedElement]:
+def _path_b_xbrl(
+    filing, ticker: str, document_type: str, year: Optional[int]
+) -> tuple[list[ParsedElement], object | None]:
     """PATH B — structured financials from XBRL.
 
-    Extracts the three core statements as clean DataFrames. Non-fatal: returns
-    an empty list (never raises) if XBRL is unavailable (older filings, foreign
-    issuers) or errors, so the narrative path still completes the ingest.
+    Returns ``(elements, xbrl_data)``. Non-fatal: returns ``([], None)`` (never
+    raises) if XBRL is unavailable (older filings, foreign issuers) or errors, so
+    the narrative path still completes the ingest. The returned ``xbrl_data`` is
+    reused by the fact-base extractor — fetched once here, not again.
     """
     try:
         logger.info(f"[PATH B] Fetching XBRL for {ticker} {document_type} (year={year})")
         xbrl_data = xbrl_from_filing(filing)
         xbrl_elements = parse_xbrl_statements(xbrl_data)
         logger.info(f"[PATH B] {len(xbrl_elements)} financial statement(s) from XBRL")
-        return xbrl_elements
+        return xbrl_elements, xbrl_data
     except RuntimeError as e:
         # filing.xbrl() returned None — no XBRL available for this filing
         logger.warning(f"[PATH B] XBRL unavailable, skipping structured financials: {e}")
     except Exception as e:
         # Network error, parsing error, etc. — don't fail the whole ingest
         logger.error(f"[PATH B] Unexpected XBRL error, skipping: {e}", exc_info=True)
-    return []
+    return [], None
+
+
+def _extract_and_store_facts(xbrl_data, filing, meta: dict, ticker: str, document_type: str) -> int:
+    """Best-effort: extract the normalized financial fact base from the already-
+    fetched ``xbrl_data`` (from PATH B — no second EDGAR round trip) and persist
+    it. Never raises — a facts failure must not break the narrative ingest.
+    Returns the number of facts stored (0 on any problem or no XBRL).
+    """
+    if xbrl_data is None:
+        return 0
+    try:
+        from backend.facts.models import FilingRef
+        from backend.facts.extractor import extract_filing_facts
+        from backend.facts.validator import flag_low_confidence
+        from backend.facts import store as facts_store
+
+        accession = str(getattr(filing, "accession_no", None)
+                        or getattr(filing, "accession_number", None) or "")
+        filing_date = str(meta.get("filing_date") or getattr(filing, "filing_date", "") or "")
+        ref = FilingRef(
+            filing_id=accession or f"{ticker}-{document_type}-{meta.get('filing_year')}",
+            cik=str(meta.get("cik") or getattr(filing, "cik", "") or ""),
+            ticker=ticker,
+            form_type=document_type,
+            filing_date=filing_date,
+            period_of_report=meta.get("period_of_report"),
+            fiscal_year=meta.get("filing_year"),
+            fiscal_period=meta.get("filing_quarter") or ("FY" if document_type == "10-K" else None),
+            accession_no=accession or None,
+        )
+        facts = flag_low_confidence(extract_filing_facts(xbrl_data, ref))
+        if not facts:
+            return 0
+        facts_store.upsert_filing(ref)
+        return facts_store.upsert_facts(facts, filing_date=filing_date)
+    except Exception as e:  # noqa: BLE001 — facts are best-effort
+        logger.warning("Fact extraction skipped for %s %s: %s", ticker, document_type, e)
+        return 0
 
 
 def ingest_filing(
@@ -460,10 +501,20 @@ def ingest_filing(
         fut_a = pool.submit(_path_a_html, filing, ticker, document_type, year)
         fut_b = pool.submit(_path_b_xbrl, filing, ticker, document_type, year)
         html_elements = fut_a.result()           # propagates PATH A failures
-        xbrl_elements = fut_b.result()           # already swallowed internally
+        xbrl_elements, xbrl_data = fut_b.result() # already swallowed internally
     all_elements.extend(html_elements)
     all_elements.extend(xbrl_elements)
     emit("parsing", html_elements=len(html_elements), xbrl_elements=len(xbrl_elements))
+
+    # ── Structured financial fact base (best-effort, deterministic) ──────────
+    # Extract normalized line items from the SAME XBRL object (no re-fetch) into
+    # the SQLite fact base so numbers can be queried/valued cheaply later.
+    if settings.enable_fact_extraction:
+        emit("extracting_financials")
+        n_facts = _extract_and_store_facts(xbrl_data, filing, meta, ticker, document_type)
+        if n_facts:
+            logger.info(f"Stored {n_facts} financial facts for {ticker}")
+            emit("financials_stored", facts=n_facts)
 
     # ── Merge text elements into page-sized chunks ────────────────────────────
     all_elements = _merge_text_elements(all_elements)

@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     # LLM calls per query — disable to minimize cost/latency on the free tier.
     enable_auto_ingest: bool = True
     enable_self_verification: bool = True
+    # Extract a normalized financial fact base (XBRL → SQLite) during ingest.
+    # Deterministic, no LLM; powers get_financials + the valuation engine.
+    enable_fact_extraction: bool = True
 
     # Multi-tool ReAct agent: when on, chat runs a model-driven tool loop
     # (search / ingest / list_corpus over multiple steps) to gather evidence
