@@ -26,9 +26,9 @@ key and hits no quota. Cloud keys remain optional fallbacks.
       maps not-found / rate-limit / network / generic; raw error stays in logs.
 - [x] **Inline `[1]` markers clickable (2026-06-16).** Citation-aware renderer in
       MarkdownContent wraps `[n]` as chips that focus the source; out-of-range inert.
-- [~] **Empty/loading/error states.** Watchlist (loading/empty/error), chat
-      empty-desk hero, and friendly ingest errors are done. REMAINING: a deliberate
-      pass on backend-down / synthesis-error / retrieval-empty states.
+- [x] **Empty/loading/error states (2026-06-16).** Watchlist (loading/empty/error),
+      chat empty-desk hero, friendly ingest errors, and now **distinct crimson
+      error notes** for synthesis-error / backend-down (vs raw text as an "answer").
 
 ---
 
@@ -102,9 +102,11 @@ SHIPPED (2026-06-16) — the spine of the *valuation* product:
       profit derived when untagged). **Banks/insurers covered (2026-06-16)** —
       `RevenuesNetOfInterestExpense` + bank line items in the taxonomy (JPM:
       revenue $182.4B, net margin 31.3%, ROE 15.7%; bank-inapplicable metrics
-      degrade to n/a). REMAINING: **per-segment facts** (deferred — needs XBRL
-      dimension-axis disambiguation so product vs geographic members don't
-      conflate; the `label` alone is ambiguous), LLM-assisted gap-fill for odd tags.
+      degrade to n/a). **Per-segment facts DONE (2026-06-16)** — `segments.py`
+      uses `with_dimensions()` to capture single-axis revenue grouped by axis
+      (Geography / Product-Service / …), surfaced in the financials tool; multi-
+      axis rows skipped, "may include subtotals" caveat for parent members.
+      REMAINING: LLM-assisted gap-fill for odd tags.
 
 ## P3 — Future features
 
@@ -116,7 +118,7 @@ SHIPPED (2026-06-16) — the spine of the *valuation* product:
       sidebar count badge added (2026-06-16). NEXT (watchlist v2): background
       scheduler + persistent push alerts (deferred — needs an always-on process;
       awkward for a local POC, and on-demand "what changed" already covers much of
-      it); price sparklines (needs a price-history fetch).
+      it). Price **sparklines DONE (2026-06-16)** (yfinance history → SVG per card).
 - [ ] **Hosting / deploy** (for showing others) — local oMLX can't be demoed
       remotely. When public: static FE on Cloudflare Pages + FastAPI/LanceDB on a
       small box (Railway/Render/Fly) + a cloud LLM key. See
