@@ -18,6 +18,16 @@ def test_map_concept_namespace_insensitive():
     assert map_concept("ifrs-full:Revenues")[0] == "revenue"  # any namespace
 
 
+def test_taxonomy_covers_bank_revenue():
+    # Banks' top line maps to revenue, but ranks BELOW the standard concept so a
+    # normal filer is never mis-mapped.
+    assert map_concept("us-gaap:RevenuesNetOfInterestExpense")[0] == "revenue"
+    assert (map_concept("RevenueFromContractWithCustomerExcludingAssessedTax")[2]
+            < map_concept("RevenuesNetOfInterestExpense")[2])
+    assert map_concept("us-gaap:InterestIncomeExpenseNet")[0] == "net_interest_income"
+    assert map_concept("us-gaap:NoninterestIncome")[0] == "noninterest_income"
+
+
 def test_map_concept_unknown_is_none():
     assert map_concept("us-gaap:SomethingWeDoNotTrack") is None
 

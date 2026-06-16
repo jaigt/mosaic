@@ -25,6 +25,9 @@ TAXONOMY: dict[str, tuple[str, list[str]]] = {
         "Revenues",
         "SalesRevenueNet",
         "RevenueNet",
+        # Banks/financials report top line net of interest expense (last-resort
+        # so a normal filer's standard revenue concept always wins).
+        "RevenuesNetOfInterestExpense",
     ]),
     "cost_of_revenue": (INCOME, [
         "CostOfRevenue",
@@ -32,7 +35,15 @@ TAXONOMY: dict[str, tuple[str, list[str]]] = {
         "CostOfGoodsSold",
     ]),
     "gross_profit": (INCOME, ["GrossProfit"]),
-    "operating_expenses": (INCOME, ["OperatingExpenses", "CostsAndExpenses"]),
+    "operating_expenses": (INCOME, ["OperatingExpenses", "CostsAndExpenses", "NoninterestExpense"]),
+    # Financials-sector line items (harmless for non-banks — concepts absent):
+    "net_interest_income": (INCOME, ["InterestIncomeExpenseNet"]),
+    "noninterest_income": (INCOME, ["NoninterestIncome"]),
+    "provision_for_credit_losses": (INCOME, [
+        "ProvisionForLoanLeaseAndOtherLosses",
+        "ProvisionForLoanAndLeaseLosses",
+        "ProvisionForCreditLossExpenseReversal",
+    ]),
     "rd_expense": (INCOME, ["ResearchAndDevelopmentExpense"]),
     "sga_expense": (INCOME, [
         "SellingGeneralAndAdministrativeExpense",
