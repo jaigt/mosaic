@@ -213,6 +213,36 @@ def test_insider_tool_adds_citable_synthetic_source():
     assert "insider activity" in src.chunk.text_content.lower()
 
 
+def test_get_financials_tool_adds_citable_source():
+    """get_financials returns the fact-base summary as an authoritative source."""
+    gen = _scripted_generate(
+        {"tool": "get_financials", "input": {"ticker": "AAPL"}},
+        {"tool": "answer", "input": {}},
+    )
+    events = []
+    agent = _agent(gen)
+    agent._financials_fn = lambda t: f"{t} — Revenue $416.2B, net margin 26.9%"
+    result = agent.run("What are AAPL's margins?", [], {}, events.append)
+    assert any(e["kind"] == "financials" for e in events)
+    assert [s.chunk.chunk_id for s in result.sources] == ["FINANCIALS_AAPL"]
+    assert result.sources[0].chunk.document_type == "financials"
+    assert "Revenue" in result.sources[0].chunk.text_content
+
+
+def test_value_company_tool_adds_citable_source():
+    gen = _scripted_generate(
+        {"tool": "value_company", "input": {"ticker": "AAPL"}},
+        {"tool": "answer", "input": {}},
+    )
+    events = []
+    agent = _agent(gen)
+    agent._valuation_fn = lambda t: f"{t} — P/E 39x, DCF $111/share"
+    result = agent.run("Is AAPL cheap?", [], {}, events.append)
+    assert any(e["kind"] == "valuation" for e in events)
+    assert [s.chunk.chunk_id for s in result.sources] == ["VALUATION_AAPL"]
+    assert result.sources[0].chunk.document_type == "valuation"
+
+
 def test_fund_holdings_tool_adds_source():
     from backend.holdings.models import FundHoldings, Holding
     fh = FundHoldings(fund="Berkshire", report_period="2026-03-31", total_value=1000,

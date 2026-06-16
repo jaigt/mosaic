@@ -86,6 +86,22 @@ _TOOL_SPECS = [
             "required": ["ticker"],
         },
     ),
+    ToolSpec(
+        name="get_financials",
+        description="Authoritative financial figures + ratios for a ticker from the structured fact base (revenue, margins, FCF, EBITDA, ROE/ROIC, leverage, growth — extracted from XBRL filings). Prefer this for ANY numeric/financial question over reading prose. Empty if the filing hasn't been ingested (ingest it first).",
+        parameters={
+            "properties": {"ticker": {"type": "string", "description": "company ticker"}},
+            "required": ["ticker"],
+        },
+    ),
+    ToolSpec(
+        name="value_company",
+        description="Valuation for a ticker: multiples (P/E, EV/EBITDA, P/FCF, P/S, FCF yield) and a transparent DCF intrinsic-value range with stated assumptions. Use for 'is X cheap/expensive', 'what's it worth', valuation questions.",
+        parameters={
+            "properties": {"ticker": {"type": "string", "description": "company ticker"}},
+            "required": ["ticker"],
+        },
+    ),
 ]
 
 _NATIVE_SYSTEM_PROMPT = """\
@@ -93,7 +109,9 @@ You are an autonomous value-investing analyst working over a corpus of SEC
 filings (10-K / 10-Q). Gather evidence by calling the provided tools — search
 the corpus, ingest a missing filing from EDGAR then search it, or list what the
 corpus holds. Gather from multiple companies/sections when the question compares
-or spans them. Do NOT guess a filing year — omit "year" to use the most recent
+or spans them. For figures/ratios/growth/valuation prefer get_financials and
+value_company (exact, traceable numbers from the fact base) over reading prose.
+Do NOT guess a filing year — omit "year" to use the most recent
 filing, and set it only when the user names a specific year. The final written
 answer is produced separately from the evidence you gather, so when you have
 enough, simply reply with a brief confirmation (no tool call) — do NOT write the
@@ -134,10 +152,21 @@ Available tools:
 - "funds_holding": which tracked value-investing superinvestors hold a given
     stock (position size + added/trimmed/exited last quarter). Use for
     "is smart money in <ticker>" / "who owns <ticker>". input: {"ticker": str}
+- "get_financials": AUTHORITATIVE figures + ratios from the structured fact base
+    (revenue, margins, FCF, EBITDA, ROE/ROIC, leverage, growth — from XBRL).
+    PREFER THIS for any numeric/financial question instead of reading prose; the
+    numbers are exact and traceable. input: {"ticker": str}
+- "value_company": multiples (P/E, EV/EBITDA, P/FCF, FCF yield) + a transparent
+    DCF intrinsic-value range. Use for valuation / "is it cheap or expensive".
+    input: {"ticker": str}
 - "answer": stop gathering — you have enough evidence to answer.
     input: {}
 
 Rules:
+- For figures, ratios, growth, or valuation, PREFER "get_financials" /
+  "value_company" over "search_filings" — those return exact, traceable numbers
+  from the fact base; prose search is for qualitative context (risks, strategy,
+  moat). If a company isn't in the fact base yet, ingest it, then get_financials.
 - Gather evidence from MULTIPLE companies/sections when the question compares or
   spans them (one search per company).
 - If a search for a named company returns nothing, ingest that company's filing,
@@ -248,6 +277,8 @@ class ReactAgent:
         insider_fn: Optional[Callable] = None,
         fund_fn: Optional[Callable] = None,
         funds_holding_fn: Optional[Callable] = None,
+        financials_fn: Optional[Callable] = None,
+        valuation_fn: Optional[Callable] = None,
     ):
         self._generate = generate_fn
         self._retrieve = retrieve_fn
@@ -256,6 +287,8 @@ class ReactAgent:
         self._insider_fn = insider_fn
         self._fund_fn = fund_fn
         self._funds_holding_fn = funds_holding_fn
+        self._financials_fn = financials_fn
+        self._valuation_fn = valuation_fn
         self._model = model
         self._max_steps = max_steps
         # Native function-calling mode (more reliable than parsing JSON from
@@ -390,6 +423,10 @@ class ReactAgent:
             return self._do_fund(action.input, on_event)
         if action.tool == "funds_holding":
             return self._do_funds_holding(action.input, filters, on_event)
+        if action.tool == "get_financials":
+            return self._do_get_financials(action.input, filters, on_event)
+        if action.tool == "value_company":
+            return self._do_value_company(action.input, filters, on_event)
         # Unknown tool — nudge the model to answer.
         on_event({"kind": "note", "label": f"Unknown tool '{action.tool}', wrapping up."})
         return f"Unknown tool '{action.tool}'. Call 'answer' if you have enough evidence."
@@ -477,6 +514,39 @@ class ReactAgent:
         text = ownership.summary_text()
         self._last_retrieved = [_synthetic_source(
             f"SMARTMONEY_{ticker}", ticker, "Superinvestor Ownership (13F)", text, doc_type="13F",
+        )]
+        return text
+
+
+    def _do_get_financials(self, inp: dict, filters: dict, on_event) -> str:
+        if self._financials_fn is None:
+            return "Structured financials are unavailable."
+        ticker = (inp.get("ticker") or filters.get("ticker") or "").strip().upper()
+        if not ticker:
+            return "get_financials needs a ticker."
+        on_event({"kind": "financials", "label": f"Pulling {ticker} structured financials…"})
+        try:
+            text = self._financials_fn(ticker)
+        except Exception as e:  # noqa: BLE001
+            return f"Financials lookup for {ticker} failed: {e}"
+        self._last_retrieved = [_synthetic_source(
+            f"FINANCIALS_{ticker}", ticker, "Financial Fact Base (XBRL)", text, doc_type="financials",
+        )]
+        return text
+
+    def _do_value_company(self, inp: dict, filters: dict, on_event) -> str:
+        if self._valuation_fn is None:
+            return "Valuation is unavailable."
+        ticker = (inp.get("ticker") or filters.get("ticker") or "").strip().upper()
+        if not ticker:
+            return "value_company needs a ticker."
+        on_event({"kind": "valuation", "label": f"Valuing {ticker} (ratios, multiples, DCF)…"})
+        try:
+            text = self._valuation_fn(ticker)
+        except Exception as e:  # noqa: BLE001
+            return f"Valuation for {ticker} failed: {e}"
+        self._last_retrieved = [_synthetic_source(
+            f"VALUATION_{ticker}", ticker, "Valuation (metrics + DCF)", text, doc_type="valuation",
         )]
         return text
 

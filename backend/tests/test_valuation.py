@@ -109,6 +109,16 @@ def test_valuation_without_price_still_does_dcf_no_multiples():
     assert v["dcf"]["upside_vs_price"] is None        # no price to compare
 
 
+def test_summary_formatters():
+    from backend.valuation.summary import format_fundamentals, format_valuation
+    fund = format_fundamentals(SAMPLE, compute_metrics(SAMPLE))
+    assert "TEST" in fund and "Margins" in fund and "Growth" in fund
+    assert "40.0%" in fund  # gross margin rendered as percent
+    val = format_valuation(compute_valuation(SAMPLE, price=20.0))
+    assert "P/E 10.0x" in val and "DCF intrinsic value" in val
+    assert "not a recommendation" in val  # guardrail line present
+
+
 def test_custom_assumptions_override():
     v = compute_valuation(SAMPLE, price=20.0,
                           assumptions=DCFAssumptions(years=10, growth=0.05,

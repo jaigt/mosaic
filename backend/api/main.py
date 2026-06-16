@@ -39,9 +39,32 @@ from backend.pipeline.store import get_table
 from backend.retrieval.query_parser import extract_filters
 from backend.retrieval.reformulate import condense_query
 from backend.retrieval.retriever import retrieve
+from backend.facts.store import get_financials as _get_financials
+from backend.valuation import compute_metrics, compute_valuation, get_price_snapshot
+from backend.valuation.summary import format_fundamentals, format_valuation
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def _financials_tool(ticker: str) -> str:
+    """Agent tool: authoritative fundamentals + ratios from the fact base."""
+    fin = _get_financials(ticker)
+    if not fin.get("metrics"):
+        return (f"No structured financials for {ticker} yet — ingest its 10-K "
+                "first, then ask again.")
+    return format_fundamentals(fin, compute_metrics(fin))
+
+
+def _valuation_tool(ticker: str) -> str:
+    """Agent tool: multiples (with a live price) + a transparent DCF range."""
+    fin = _get_financials(ticker)
+    if not fin.get("metrics"):
+        return f"No structured financials for {ticker} yet — ingest its 10-K first."
+    snap = get_price_snapshot(ticker) or {}
+    val = compute_valuation(fin, price=snap.get("price"),
+                            shares_outstanding=snap.get("shares_outstanding"))
+    return format_valuation(val)
 
 # Max tokens buffered between the (paid) producer thread and the SSE consumer.
 # Keeps memory bounded and lets the producer block (and thus notice a stop
@@ -513,6 +536,8 @@ async def _chat_stream(request: ChatRequest, http_request=None) -> AsyncGenerato
                 insider_fn=get_insider_activity,
                 fund_fn=get_fund_holdings,
                 funds_holding_fn=funds_holding_lookup,
+                financials_fn=_financials_tool,
+                valuation_fn=_valuation_tool,
             )
             holder: dict = {}
             async for ev in _react_gather(
