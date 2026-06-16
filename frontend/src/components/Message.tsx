@@ -172,7 +172,15 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
           {cleanContent ? (
             <div className="markdown-content">
               <Suspense fallback={<LazyFallback label="Rendering" />}>
-                <MarkdownContent>{cleanContent}</MarkdownContent>
+                <MarkdownContent
+                  onCitation={
+                    onCitationClick && sources && sources.length
+                      ? (i) => { if (i >= 0 && i < sources.length) onCitationClick(sources, i); }
+                      : undefined
+                  }
+                >
+                  {cleanContent}
+                </MarkdownContent>
               </Suspense>
             </div>
           ) : (
