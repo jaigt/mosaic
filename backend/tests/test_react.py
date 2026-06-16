@@ -243,6 +243,16 @@ def test_value_company_tool_adds_citable_source():
     assert result.sources[0].chunk.document_type == "valuation"
 
 
+def test_friendly_ingest_errors_dont_leak_raw_exceptions():
+    from backend.agent.react import _friendly_error
+    assert "find" in _friendly_error(Exception("No XBRL data available"), "AAPL", "10-K").lower()
+    assert "rate-limit" in _friendly_error(Exception("HTTP 429 too many requests"), "X", "10-K").lower()
+    assert "reach" in _friendly_error(Exception("Connection timed out"), "X", "10-K").lower()
+    # An internal/odd error → generic, and never echoes the raw string.
+    msg = _friendly_error(Exception("field 'period_of_report' does not exist in table schema"), "X", "10-K")
+    assert "try again" in msg.lower() and "schema" not in msg.lower()
+
+
 def test_build_thesis_tool_adds_citable_source():
     gen = _scripted_generate(
         {"tool": "build_thesis", "input": {"ticker": "AAPL"}},

@@ -478,8 +478,10 @@ class ReactAgent:
             on_event({"kind": "ingest_done", "label": f"Ingested {ticker} {doc_type} ({n} chunks)."})
             return f"Ingested {ticker} {doc_type} — {n} chunks now searchable. Search it next."
         except Exception as e:  # noqa: BLE001
-            on_event({"kind": "ingest_failed", "label": f"Couldn't fetch {ticker} {doc_type}: {e}"})
-            return f"Ingest of {ticker} {doc_type} failed: {e}"
+            logger.warning("Ingest of %s %s failed: %s", ticker, doc_type, e, exc_info=True)
+            friendly = _friendly_error(e, ticker, doc_type)
+            on_event({"kind": "ingest_failed", "label": friendly})
+            return f"{friendly} (Tell the user; suggest trying again or another filing.)"
 
     def _do_insider(self, inp: dict, filters: dict, on_event) -> str:
         if self._insider_fn is None:
@@ -581,6 +583,26 @@ class ReactAgent:
             f"THESIS_{ticker}", ticker, "Investment Thesis (signals)", text, doc_type="thesis",
         )]
         return text
+
+
+_FRIENDLY_ERRORS = [
+    (("no xbrl", "not found", "no filing", "no matching"),
+     "Couldn't find {ticker}'s {doc_type} on EDGAR — it may not exist or use a different ticker."),
+    (("rate", "429", "too many", "throttl"),
+     "SEC EDGAR is rate-limiting right now — try {ticker} again in a moment."),
+    (("timeout", "timed out", "connection", "network", "resolve", "getaddrinfo", "ssl"),
+     "Couldn't reach SEC EDGAR right now — try {ticker} again shortly."),
+]
+
+
+def _friendly_error(exc: Exception, ticker: str, doc_type: str) -> str:
+    """Map a raw ingest exception to a plain-English, user-facing message. The
+    raw error stays in the logs; the user shouldn't see a stack-trace string."""
+    s = str(exc).lower()
+    for needles, msg in _FRIENDLY_ERRORS:
+        if any(n in s for n in needles):
+            return msg.format(ticker=ticker, doc_type=doc_type)
+    return f"Couldn't fetch {ticker}'s {doc_type} right now — please try again."
 
 
 def _synthetic_source(chunk_id: str, ticker: str, section: str, text: str, doc_type: str):
