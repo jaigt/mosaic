@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { FileText, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronRight, X } from 'lucide-react';
 import { listFilings, FilingInfo } from '../api';
 import { cn } from './ui';
 import InsiderPanel from './InsiderPanel';
@@ -54,6 +54,31 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, []);
 
   const totalChunks = filings.reduce((n, f) => n + f.chunks, 0);
+
+  // Group filings by ticker so each company is one compact, expandable row
+  // (the flat one-row-per-filing list ate too much vertical space).
+  const grouped = useMemo(() => {
+    const m = new Map<string, FilingInfo[]>();
+    for (const f of filings) {
+      const arr = m.get(f.ticker) ?? [];
+      arr.push(f);
+      m.set(f.ticker, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => b.filing_year - a.filing_year);
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filings]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (ticker: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(ticker) ? next.delete(ticker) : next.add(ticker);
+      return next;
+    });
+  // Auto-expand the company whose filing is currently focused.
+  useEffect(() => {
+    if (activeFiling?.ticker) setExpanded((prev) => new Set(prev).add(activeFiling.ticker));
+  }, [activeFiling?.ticker]);
 
   // On mobile the sidebar is unmounted when the drawer is closed, so its
   // 30-second poll doesn't run off-screen.
@@ -128,52 +153,69 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ) : (
           <ul className="mt-1">
-            {filings.map((f, idx) => {
-              const taskId = `${f.ticker}-${f.document_type}-${f.filing_year}`;
-              const isActive =
-                activeFiling?.ticker === f.ticker &&
-                activeFiling?.filing_year === f.filing_year &&
-                activeFiling?.document_type === f.document_type;
-
+            {grouped.map(([ticker, fs], gi) => {
+              const total = fs.reduce((n, f) => n + f.chunks, 0);
+              const open = expanded.has(ticker);
+              const tickerActive = activeFiling?.ticker === ticker;
               return (
-                <li key={taskId} className="vr-rise" style={{ animationDelay: `${idx * 45}ms` }}>
-                  <div
-                    onClick={() => onSelectFiling(f)}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isActive}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelectFiling(f);
-                      }
-                    }}
+                <li key={ticker} className="vr-rise" style={{ animationDelay: `${gi * 45}ms` }}>
+                  <button
+                    type="button"
+                    onClick={() => { toggle(ticker); onSelectFiling(fs[0]); }}
+                    aria-expanded={open}
                     className={cn(
-                      'group -mx-2 mb-0.5 flex cursor-pointer items-center rounded-md border-l-2 px-3 py-2.5 transition-colors',
-                      isActive
-                        ? 'border-amber-400 bg-amber-400/[0.07]'
+                      'group -mx-2 flex w-full items-center gap-2 rounded-md border-l-2 px-3 py-2 text-left transition-colors',
+                      tickerActive
+                        ? 'border-amber-400 bg-amber-400/[0.06]'
                         : 'border-transparent hover:bg-paper-100/[0.03]',
                     )}
                   >
+                    <ChevronRight
+                      size={12}
+                      aria-hidden="true"
+                      className={cn('shrink-0 text-fg-400 transition-transform', open && 'rotate-90')}
+                    />
                     <span
                       className={cn(
-                        'font-mono text-[13.5px] font-semibold tracking-[0.04em]',
-                        isActive ? 'text-amber-300' : 'text-fg-100',
+                        'font-mono text-[13px] font-semibold tracking-[0.04em]',
+                        tickerActive ? 'text-amber-300' : 'text-fg-100',
                       )}
                     >
-                      {f.ticker}
+                      {ticker}
                     </span>
                     <span className="vr-leader" aria-hidden="true" />
-                    <span className="font-mono text-[11px] tabular-nums text-fg-300">
-                      {f.filing_year} {f.document_type}
+                    <span className="font-mono text-[10px] tabular-nums text-fg-400">
+                      {fs.length > 1 ? `${fs.length} filings` : '1 filing'} · {total.toLocaleString()}
                     </span>
-                  </div>
-                  <div className="-mx-2 px-3 pb-2 pt-0">
-                    <span className="flex items-center gap-1.5 pl-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-fg-400/80">
-                      <FileText size={10} aria-hidden="true" />
-                      {f.chunks} excerpts indexed
-                    </span>
-                  </div>
+                  </button>
+                  {open && (
+                    <ul className="mb-1 ml-[1.35rem] border-l border-line-soft">
+                      {fs.map((f) => {
+                        const isActive =
+                          activeFiling?.ticker === f.ticker &&
+                          activeFiling?.filing_year === f.filing_year &&
+                          activeFiling?.document_type === f.document_type;
+                        return (
+                          <li key={`${f.document_type}-${f.filing_year}`}>
+                            <button
+                              type="button"
+                              onClick={() => onSelectFiling(f)}
+                              aria-pressed={isActive}
+                              className={cn(
+                                'flex w-full items-center gap-2 rounded px-3 py-1 text-left font-mono text-[11px] transition-colors',
+                                isActive ? 'text-amber-300' : 'text-fg-300 hover:bg-paper-100/[0.03]',
+                              )}
+                            >
+                              <span className="tabular-nums">{f.filing_year}</span>
+                              <span className="text-fg-400">{f.document_type}</span>
+                              <span className="vr-leader" aria-hidden="true" />
+                              <span className="tabular-nums text-fg-400/80">{f.chunks}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </li>
               );
             })}
