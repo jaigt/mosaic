@@ -98,10 +98,14 @@ SHIPPED (2026-06-16) — the spine of the *valuation* product:
       steer toward structured facts over prose. Live-verified on oMLX: AAPL
       margins/FCF + "cheap or expensive" (DCF) answered from the fact base,
       `supported` verification.
-- [ ] **Phase 4 — thesis synthesis:** bull/bear case + "what would change my
-      mind" over the structured facts + targeted narrative (the judgment layer).
-- [ ] **Hardening:** LLM-assisted gap-fill for line items XBRL misses (segments,
-      odd tags); broaden the taxonomy across more filers; segment-level facts.
+- [x] **Phase 4 — thesis synthesis (2026-06-16):** `derive_signals` (deterministic
+      bull/bear/neutral signals on filed numbers) + `build_thesis` agent tool;
+      model narrates + adds qualitative filing context. Live-verified on oMLX
+      (AAPL bull/bear + "what would change the view" + risk factors).
+- [~] **Hardening:** cross-company check done (MSFT/GOOGL/NVDA/KO clean; gross
+      profit derived when untagged). REMAINING: financials-sector taxonomy for
+      banks/insurers (currently routed to prose search), LLM-assisted gap-fill for
+      segments/odd tags, segment-level facts.
 
 ## P3 — Future features
 
