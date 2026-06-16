@@ -16,6 +16,9 @@ interface SidebarProps {
   isMobile?: boolean;
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
+  /** Which main view is active, and how to switch it. */
+  view?: 'chat' | 'watchlist';
+  onViewChange?: (view: 'chat' | 'watchlist') => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -25,6 +28,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   isMobile = false,
   drawerOpen = false,
   onCloseDrawer,
+  view = 'chat',
+  onViewChange,
 }) => {
   const [filings, setFilings] = useState<FilingInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +95,27 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* View switch: the conversational analyst vs the watchlist dashboard. */}
+      <div className="flex gap-1 px-5 pt-4" role="tablist" aria-label="View">
+        {(['chat', 'watchlist'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => onViewChange?.(v)}
+            className={cn(
+              'flex-1 rounded-md px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors',
+              view === v
+                ? 'bg-amber-400/15 text-amber-300'
+                : 'text-fg-400 hover:bg-white/5 hover:text-fg-200',
+            )}
+          >
+            {v === 'chat' ? 'Analyst' : 'Watchlist'}
+          </button>
+        ))}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-5 pt-5" aria-label="Ingested filings">

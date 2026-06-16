@@ -3,6 +3,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+// Node global, typed locally so the config typechecks without @types/node.
+declare const process: { env: Record<string, string | undefined> }
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {

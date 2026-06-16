@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatPanel from './components/ChatPanel';
 import SourcePanel from './components/SourcePanel';
+import WatchlistView from './components/WatchlistView';
 import { Source, FilingInfo } from './api';
 import { cn } from './components/ui';
 import { useIsMobile } from './hooks/useMediaQuery';
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [activeSourceIdx, setActiveSourceIdx] = useState(0);
   const [activeFiling, setActiveFiling] = useState<FilingInfo | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [view, setView] = useState<'chat' | 'watchlist'>('chat');
 
   const isMobile = useIsMobile();
 
@@ -127,46 +129,56 @@ const App: React.FC = () => {
         isMobile={isMobile}
         drawerOpen={drawerOpen}
         onCloseDrawer={() => setDrawerOpen(false)}
+        view={view}
+        onViewChange={setView}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2 md:flex-row md:p-3">
-        <div
-          className="flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-none"
-          style={isMobile ? undefined : { width: `${leftWidth}%` }}
-        >
-          <ChatPanel
-            onSourcesUpdate={handleSourcesUpdate}
-            onCitationClick={handleCitationClick}
-            onClear={() => { setSources([]); setActiveSourceIdx(0); setActiveFiling(null); }}
-            activeFiling={activeFiling}
-            onClearFiling={() => setActiveFiling(null)}
-            showMenuButton={isMobile}
-            onMenuClick={() => setDrawerOpen(true)}
-          />
-        </div>
+        {view === 'watchlist' ? (
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <WatchlistView />
+          </div>
+        ) : (
+          <>
+            <div
+              className="flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-none"
+              style={isMobile ? undefined : { width: `${leftWidth}%` }}
+            >
+              <ChatPanel
+                onSourcesUpdate={handleSourcesUpdate}
+                onCitationClick={handleCitationClick}
+                onClear={() => { setSources([]); setActiveSourceIdx(0); setActiveFiling(null); }}
+                activeFiling={activeFiling}
+                onClearFiling={() => setActiveFiling(null)}
+                showMenuButton={isMobile}
+                onMenuClick={() => setDrawerOpen(true)}
+              />
+            </div>
 
-        {/* Resizer — desktop only; vertical stacking has no draggable split. */}
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize panels"
-          onMouseDown={startResizing}
-          onTouchStart={startResizing}
-          className={cn(
-            'group relative mx-1 hidden w-1 shrink-0 cursor-col-resize rounded-full transition-colors md:block',
-            isResizing ? 'bg-amber-400' : 'bg-line hover:bg-line-strong',
-          )}
-        >
-          <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
-        </div>
+            {/* Resizer — desktop only; vertical stacking has no draggable split. */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize panels"
+              onMouseDown={startResizing}
+              onTouchStart={startResizing}
+              className={cn(
+                'group relative mx-1 hidden w-1 shrink-0 cursor-col-resize rounded-full transition-colors md:block',
+                isResizing ? 'bg-amber-400' : 'bg-line hover:bg-line-strong',
+              )}
+            >
+              <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
+            </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <SourcePanel
-            sources={sources}
-            activeIdx={activeSourceIdx}
-            onActiveIdxChange={setActiveSourceIdx}
-          />
-        </div>
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              <SourcePanel
+                sources={sources}
+                activeIdx={activeSourceIdx}
+                onActiveIdxChange={setActiveSourceIdx}
+              />
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

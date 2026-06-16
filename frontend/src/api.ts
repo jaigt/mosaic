@@ -180,3 +180,68 @@ export async function getSmartMoney(ticker: string): Promise<SmartMoney> {
   if (!resp.ok) throw new Error(`Failed to load smart money: ${resp.status}`);
   return resp.json();
 }
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+
+export interface WatchlistFlag {
+  type: string;       // valuation | fundamental | filing | holdings | coverage
+  direction: string;  // bull | bear | neutral | info
+  label: string;
+}
+
+export interface WatchlistRow {
+  ticker: string;
+  covered: boolean;
+  price?: number | null;
+  verdict?: 'cheap' | 'fair' | 'expensive' | null;
+  valuation?: {
+    dcf_intrinsic?: number | null;
+    dcf_low?: number | null;
+    dcf_high?: number | null;
+    pe?: number | null;
+    fcf_yield?: number | null;
+    upside_vs_price?: number | null;
+  };
+  key_metrics?: {
+    revenue?: number | null;
+    net_margin?: number | null;
+    fcf_margin?: number | null;
+    revenue_growth_yoy?: number | null;
+    net_debt_to_ebitda?: number | null;
+    roic_approx?: number | null;
+  };
+  flags: WatchlistFlag[];
+  changed: string[];
+  new_filing?: { available: boolean; edgar_date?: string; ingested_date?: string } | null;
+  holdings?: { insider?: string; smart_money?: string };
+}
+
+export async function getWatchlist(): Promise<{ tickers: string[] }> {
+  const resp = await fetch(`${BASE}/watchlist`);
+  if (!resp.ok) throw new Error(`Failed to load watchlist: ${resp.status}`);
+  return resp.json();
+}
+
+/** On-demand dashboard: valuation + signals + flags + "what changed" per name.
+ *  Slow (best-effort network enrichment) — show a loading state. */
+export async function getWatchlistDashboard(): Promise<{ rows: WatchlistRow[] }> {
+  const resp = await fetch(`${BASE}/watchlist/dashboard`, { headers: jsonHeaders() });
+  if (!resp.ok) throw new Error(`Failed to load dashboard: ${resp.status}`);
+  return resp.json();
+}
+
+export async function addToWatchlist(ticker: string): Promise<{ tickers: string[] }> {
+  const resp = await fetch(`${BASE}/watchlist/${encodeURIComponent(ticker)}`, {
+    method: 'POST', headers: jsonHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Failed to add ${ticker}: ${resp.status}`);
+  return resp.json();
+}
+
+export async function removeFromWatchlist(ticker: string): Promise<{ tickers: string[] }> {
+  const resp = await fetch(`${BASE}/watchlist/${encodeURIComponent(ticker)}`, {
+    method: 'DELETE', headers: jsonHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Failed to remove ${ticker}: ${resp.status}`);
+  return resp.json();
+}
