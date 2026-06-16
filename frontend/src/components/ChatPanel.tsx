@@ -13,6 +13,8 @@ interface ChatMessage {
   sources?: Source[];
   isStreaming?: boolean;
   verification?: VerificationResult;
+  /** Rendered as a distinct error note rather than a normal answer. */
+  isError?: boolean;
 }
 
 // Persist the conversation across reloads. Bounded + defensive: a corrupt or
@@ -223,7 +225,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
           ));
         } else if (event.type === 'error') {
           setMessages(prev => prev.map(m =>
-            m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m
+            m.id === assistantId
+              ? { ...m, content: 'Something went wrong generating that answer. Please try again — if it persists, the model server may be busy or unreachable.', isStreaming: false, isError: true }
+              : m
           ));
         }
       }
@@ -239,7 +243,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
       } else {
         setMessages(prev => prev.map(m =>
           m.id === assistantId
-            ? { ...m, content: `Connection error: ${err instanceof Error ? err.message : String(err)}`, isStreaming: false }
+            ? { ...m, content: "Couldn't reach the server — it may be offline. Check the backend is running, then try again.", isStreaming: false, isError: true }
             : m
         ));
       }
@@ -356,6 +360,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onSourcesUpdate, onCitationClick,
             sources={msg.sources}
             isStreaming={msg.isStreaming}
             verification={msg.verification}
+            isError={msg.isError}
             onCitationClick={onCitationClick}
           />
         ))}

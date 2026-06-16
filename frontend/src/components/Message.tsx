@@ -30,6 +30,8 @@ interface MessageProps {
   citations?: Citation[];
   sources?: Source[];
   isStreaming?: boolean;
+  /** When true, render the content as a distinct error note, not a normal answer. */
+  isError?: boolean;
   /** Critic-pass result auditing the answer against its sources. Only rendered
    *  on finished (non-streaming) assistant messages. */
   verification?: VerificationResult;
@@ -100,7 +102,7 @@ const VerificationBadge: React.FC<{ verification: VerificationResult }> = ({ ver
   );
 };
 
-const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, verification, onCitationClick }) => {
+const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, isStreaming, isError, verification, onCitationClick }) => {
   const isUser = role === 'user';
 
   // Extract chart data from content if it contains <chart> tags.
@@ -166,10 +168,17 @@ const Message: React.FC<MessageProps> = ({ role, content, chartData, sources, is
             'overflow-hidden text-[14.5px] leading-[1.75] text-fg-100 [overflow-wrap:anywhere]',
             isUser
               ? 'rounded-md border border-line bg-ink-800/50 px-4 py-3 font-serif text-[15px] text-fg-200'
-              : 'rounded-md border border-line border-l-2 border-l-amber-500/60 bg-ink-800/70 px-5 py-4',
+              : isError
+                ? 'rounded-md border border-crimson-500/40 border-l-2 border-l-crimson-400 bg-crimson-500/[0.06] px-5 py-4'
+                : 'rounded-md border border-line border-l-2 border-l-amber-500/60 bg-ink-800/70 px-5 py-4',
           )}
         >
-          {cleanContent ? (
+          {isError ? (
+            <div className="flex items-start gap-2.5 font-mono text-[13px] leading-relaxed text-crimson-400">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>{content}</span>
+            </div>
+          ) : cleanContent ? (
             <div className="markdown-content">
               <Suspense fallback={<LazyFallback label="Rendering" />}>
                 <MarkdownContent
