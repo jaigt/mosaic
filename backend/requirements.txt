@@ -31,3 +31,4 @@ tenacity>=8.2.0  # retry logic for API calls
 
 # Testing
 pytest>=8.0.0
+yfinance
