@@ -22,17 +22,13 @@ key and hits no quota. Cloud keys remain optional fallbacks.
 
 ## P1 — Visible polish
 
-- [ ] **Friendly ingest/agent error messages.** On an ingest failure the agent
-      surfaces the *raw* exception to the user (e.g. a LanceDB schema string).
-      Map internal errors to a plain "couldn't fetch X right now — try again"
-      while keeping the detail in logs. (`backend/agent/react.py` `_do_ingest`,
-      the `ingest_failed` event.)
-- [ ] **Empty/loading/error states pass.** Review first-run (no filings),
-      mid-ingest, retrieval-empty, backend-down, synthesis-error — make each look
-      intentional. (Local synthesis is slow, so the "working…" state matters.)
-- [ ] **Inline `[1]` markers clickable.** Source *pills* already focus the
-      SourcePanel; making inline `[1]`/`[2]` markers in the markdown clickable
-      needs a custom react-markdown text renderer.
+- [x] **Friendly ingest/agent error messages (2026-06-16).** `_friendly_error`
+      maps not-found / rate-limit / network / generic; raw error stays in logs.
+- [x] **Inline `[1]` markers clickable (2026-06-16).** Citation-aware renderer in
+      MarkdownContent wraps `[n]` as chips that focus the source; out-of-range inert.
+- [~] **Empty/loading/error states.** Watchlist (loading/empty/error), chat
+      empty-desk hero, and friendly ingest errors are done. REMAINING: a deliberate
+      pass on backend-down / synthesis-error / retrieval-empty states.
 
 ---
 
@@ -103,9 +99,12 @@ SHIPPED (2026-06-16) — the spine of the *valuation* product:
       model narrates + adds qualitative filing context. Live-verified on oMLX
       (AAPL bull/bear + "what would change the view" + risk factors).
 - [~] **Hardening:** cross-company check done (MSFT/GOOGL/NVDA/KO clean; gross
-      profit derived when untagged). REMAINING: financials-sector taxonomy for
-      banks/insurers (currently routed to prose search), LLM-assisted gap-fill for
-      segments/odd tags, segment-level facts.
+      profit derived when untagged). **Banks/insurers covered (2026-06-16)** —
+      `RevenuesNetOfInterestExpense` + bank line items in the taxonomy (JPM:
+      revenue $182.4B, net margin 31.3%, ROE 15.7%; bank-inapplicable metrics
+      degrade to n/a). REMAINING: **per-segment facts** (deferred — needs XBRL
+      dimension-axis disambiguation so product vs geographic members don't
+      conflate; the `label` alone is ambiguous), LLM-assisted gap-fill for odd tags.
 
 ## P3 — Future features
 
@@ -113,8 +112,11 @@ SHIPPED (2026-06-16) — the spine of the *valuation* product:
       (`backend/watchlist/` + `WatchlistView`): per name, valuation verdict +
       flags (valuation / fundamental signals / new-filing / insider & smart-money)
       + "what changed since last view" (snapshot diff). No scheduler. Live-verified
-      (AAPL/MSFT/GOOGL render with flags). NEXT: background scheduler + persistent
-      push alerts; a compact per-ticker badge in the sidebar; price-history/sparkline.
+      (AAPL/MSFT/GOOGL render with flags). Auto-extracts facts on add (self-heals);
+      sidebar count badge added (2026-06-16). NEXT (watchlist v2): background
+      scheduler + persistent push alerts (deferred — needs an always-on process;
+      awkward for a local POC, and on-demand "what changed" already covers much of
+      it); price sparklines (needs a price-history fetch).
 - [ ] **Hosting / deploy** (for showing others) — local oMLX can't be demoed
       remotely. When public: static FE on Cloudflare Pages + FastAPI/LanceDB on a
       small box (Railway/Render/Fly) + a cloud LLM key. See
